@@ -1,9 +1,15 @@
 """Markdown report generator: audit result JSON -> accessibility-audit-report.md.
 
-Deterministic: same input JSON -> byte-identical output.
+Deterministic: same input JSON (+ same enrichment source) -> byte-identical output.
+
+Enrichment: when ``enrichment`` is provided (a {sc: parsed-criterion} dict,
+see docx_a11y.enrich), each finding is followed by a normative-text block
+sourced from the official WCAG Understanding documentation (bundled cache or
+live wcag-guidelines-mcp).
 """
 import json
 from pathlib import Path
+from typing import Optional
 
 from .audit import audit_result_to_json
 
@@ -32,10 +38,43 @@ RULE_NOTES = {
 }
 
 
-def render_report(result: dict, remediation=None, source_path=None) -> str:
+def _normative_block(sc: str, enrichment: dict) -> list:
+    """Render the normative-text block for one SC (from enrichment dict)."""
+    crit = enrichment.get(sc)
+    if not crit:
+        return []
+    L = []
+    L.append(f"<details><summary>Normative text — SC {sc} (official W3C Understanding docs)</summary>")
+    L.append("")
+    if crit.get("in_brief"):
+        L.append(crit["in_brief"])
+        L.append("")
+    if crit.get("description"):
+        L.append("**Description:**")
+        L.append("")
+        L.append(crit["description"])
+        L.append("")
+    if crit.get("intent"):
+        L.append("**Intent:**")
+        L.append("")
+        # Intent sections are long; cap at 160 lines for report readability.
+        intent_lines = crit["intent"].splitlines()
+        L.extend(intent_lines[:160])
+        if len(intent_lines) > 160:
+            L.append(f"_(truncated: {len(intent_lines) - 160} more lines)_")
+        L.append("")
+    L.append(f"</details>")
+    L.append("")
+    return L
+
+
+def render_report(result: dict, remediation=None, source_path=None,
+                  enrichment: Optional[dict] = None,
+                  enrichment_source: Optional[str] = None) -> str:
     src = source_path or result.get("file", "document.docx")
     summary = result["summary"]
     findings = result["findings"]
+    enrichment = enrichment or {}
     L = []
     L.append(f"# Accessibility Audit Report — {src}")
     L.append("")
@@ -49,6 +88,8 @@ def render_report(result: dict, remediation=None, source_path=None) -> str:
              f"serious={summary['by_severity']['serious']}, "
              f"moderate={summary['by_severity']['moderate']}, "
              f"minor={summary['by_severity']['minor']})")
+    if enrichment_source:
+        L.append(f"- **Normative text source:** {enrichment_source}")
     L.append("")
     L.append("## Scope note")
     L.append("")
@@ -72,6 +113,7 @@ def render_report(result: dict, remediation=None, source_path=None) -> str:
             if f.get("fix"):
                 L.append(f"- **Fix:** {f['fix']}")
             L.append("")
+            L.extend(_normative_block(f["sc"], enrichment))
     else:
         L.append("## Findings")
         L.append("")
@@ -112,7 +154,10 @@ def render_report(result: dict, remediation=None, source_path=None) -> str:
     return "\n".join(L)
 
 
-def write_report(result: dict, path, remediation=None, source_path=None):
-    text = render_report(result, remediation, source_path)
+def write_report(result: dict, path, remediation=None, source_path=None,
+                 enrichment: Optional[dict] = None,
+                 enrichment_source: Optional[str] = None):
+    text = render_report(result, remediation, source_path,
+                         enrichment=enrichment, enrichment_source=enrichment_source)
     Path(path).write_text(text)
     return path
