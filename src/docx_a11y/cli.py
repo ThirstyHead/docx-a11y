@@ -3,22 +3,31 @@
 Usage:
   docx-a11y audit FILE [--json out.json] [--report out.md]
               [--language en-US] [--background FFFFFF]
-              [--heading-map '0=Heading 1,4=Heading 2']
+              [--heading-map '0=Heading 1,4=Heading 2'] [--batch DIR]
   docx-a11y remediate FILE --findings audit.json --out FILE_fixed.docx
               [--language en-US] [--background FFFFFF]
               [--heading-map '0=Heading 1,4=Heading 2']
+  docx-a11y fix FILE [--out FILE.fixed.docx] [--json out.json] [--report out.md]
+              [--language en-US] [--background FFFFFF]
+              [--heading-map '0=Heading 1,4=Heading 2'] [--enrich]
+  docx-a11y fix --batch DIR [same flags except --out/--report]
+  docx-a11y audit --batch DIR
   docx-a11y rules
 
 Exit codes (audit): 0 = pass (no blocking findings), 1 = fail, 2 = usage/IO error.
+Exit codes (fix):    0 = PASS after fix, 1 = FAIL (blocking findings remain),
+                     2 = error (unreadable/corrupt file). Batch mode: 2 if any
+                     doc errored, else 1 if any failed, else 0.
 """
 import argparse
+import json
 import sys
 from pathlib import Path
 
 from . import __version__
 from .audit import audit_file, audit_result_to_json
 from .enrich import build_enrichment
-from .remediate import remediate
+from .remediate import fix_one, remediate
 from .report import write_report
 from .rules import RULES, AuditContext
 
@@ -98,6 +107,46 @@ def cmd_remediate(args) -> int:
     return 0 if rr.ok else 1
 
 
+def cmd_fix(args) -> int:
+    ctx = _ctx(args, args.file)
+    out = args.out or str(Path(args.file).with_name(Path(args.file).name + ".fixed.docx"))
+    fr = fix_one(args.file, out, ctx)
+    if fr["status"] == "error":
+        print(f"error: {fr['error']}", file=sys.stderr)
+        return 2
+
+    if args.json:
+        Path(args.json).write_text(json.dumps(fr, indent=2, sort_keys=True) + "\n")
+        print(f"fix result written: {args.json}")
+
+    before = fr["findings_before"]
+    after_total = fr["reaudit"]["summary"]["total"]
+    if fr["remediation"]:
+        m = fr["remediation"]
+        print(f"fix {args.file} -> {fr['output_path']}")
+        print(f"  applied: {len(m['applied'])}, skipped(manual): {len(m['skipped'])}")
+        for s in m["skipped"]:
+            reason = s[2] if len(s) > 2 else ""
+            print(f"  [skipped] {s[0]} @ {s[1]}" + (f" — {reason}" if reason else ""))
+    else:
+        print(f"fix {args.file} -> {fr['output_path']} (clean: 0 findings, copied)")
+
+    verdict = "PASS" if fr["status"] == "pass" else "FAIL (blocking findings remain)"
+    print(f"  findings: {before} -> {after_total} => {verdict}")
+    if fr["status"] != "pass":
+        for f in fr["reaudit"]["findings"]:
+            if f["severity"] in ("critical", "serious"):
+                print(f"  [BLOCKING] {f['rule_id']} SC {f['sc']} @ {f['location']} :: {f['description']}")
+
+    if args.report:
+        enrichment, source = build_enrichment(fr["reaudit"], live=getattr(args, "enrich", False))
+        write_report(fr["reaudit"], args.report, remediation=fr["remediation"],
+                     source_path=args.file, enrichment=enrichment,
+                     enrichment_source=source)
+        print(f"report written: {args.report} (normative text: {source})")
+    return 0 if fr["status"] == "pass" else 1
+
+
 def cmd_rules(_args) -> int:
     print(f"{'rule_id':28s} {'sc':6s} {'severity':9s} fixable-rules")
     for r in RULES:
@@ -137,6 +186,18 @@ def main(argv=None) -> int:
     r.add_argument("--background", default="FFFFFF")
     r.add_argument("--heading-map", help="deterministic structure: '0=Heading 1,4=Heading 2'")
     r.set_defaults(func=cmd_remediate)
+
+    fx = sub.add_parser("fix", help="audit + remediate + verify in one step (source untouched)")
+    fx.add_argument("file")
+    fx.add_argument("--out", help="output .docx (default: <file>.fixed.docx)")
+    fx.add_argument("--json", help="write full fix result JSON (before/after/remediation)")
+    fx.add_argument("--report", help="write markdown report (re-audit + remediation section)")
+    fx.add_argument("--language", default="en-US")
+    fx.add_argument("--background", default="FFFFFF")
+    fx.add_argument("--heading-map", help="deterministic structure: '0=Heading 1,4=Heading 2'")
+    fx.add_argument("--enrich", action="store_true",
+                    help="fetch normative text live from wcag-guidelines-mcp for --report")
+    fx.set_defaults(func=cmd_fix)
 
     rl = sub.add_parser("rules", help="list audit rules")
     rl.set_defaults(func=cmd_rules)

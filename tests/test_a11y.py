@@ -287,6 +287,56 @@ def test_cli_audit_writes_json_and_report(tmp_path, capsys):
     assert "SC 1.1.1" in md
 
 
+# ---------------------------------------------------------------------------
+# CLI: fix
+# ---------------------------------------------------------------------------
+
+def test_cli_fix_single_file_pass(capsys, tmp_path):
+    out = tmp_path / "fixable.fixed.docx"
+    rc = main(["fix", str(FIX / "fixable.docx"), "--out", str(out),
+               "--heading-map", "0=Heading 1,3=Heading 2,4=Heading 2"])
+    assert rc == 0
+    out_text = capsys.readouterr().out
+    assert "6 -> 0" in out_text          # "6 findings before, 0 after"
+    assert "PASS" in out_text
+    assert out.exists()
+
+
+def test_cli_fix_single_file_fail(capsys, tmp_path):
+    rc = main(["fix", str(FIX / "fixable.docx"),
+               "--out", str(tmp_path / "x.docx")])   # no heading map
+    assert rc == 1
+    out_text = capsys.readouterr().out
+    assert "FAIL" in out_text
+    assert "headings-none" in out_text
+
+
+def test_cli_fix_missing_file_exit_2(capsys):
+    rc = main(["fix", str(Path(FIX) / "nope.docx")])
+    assert rc == 2
+    assert "error" in capsys.readouterr().err
+
+
+def test_cli_fix_writes_json_and_report(capsys, tmp_path):
+    j, r = tmp_path / "f.json", tmp_path / "f.md"
+    rc = main(["fix", str(FIX / "fixable.docx"),
+               "--out", str(tmp_path / "x.docx"),
+               "--heading-map", "0=Heading 1,3=Heading 2,4=Heading 2",
+               "--json", str(j), "--report", str(r)])
+    assert rc == 0
+    capsys.readouterr()
+    data = json.loads(j.read_text())
+    assert data["status"] == "pass"
+    assert data["findings_before"] == 6
+    md = r.read_text()
+    assert "Remediation" in md            # report includes applied/skipped
+    assert "Re-verify" in md
+
+
+# ---------------------------------------------------------------------------
+# CLI: rules
+# ---------------------------------------------------------------------------
+
 def test_cli_rules(capsys):
     rc = main(["rules"])
     assert rc == 0
