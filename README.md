@@ -12,6 +12,7 @@ python3 -m venv .venv
 
 # 1. audit (exit 0 = pass, 1 = fail, 2 = error)
 docx-a11y audit recipe.docx --json findings.json --report report.md
+#    reports can embed official WCAG normative text (see "Report enrichment")
 
 # 2. remediate (needs the audit JSON; provide a heading map for deterministic structure)
 docx-a11y remediate recipe.docx --findings findings.json \

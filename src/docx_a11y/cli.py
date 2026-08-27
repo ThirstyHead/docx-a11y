@@ -17,6 +17,7 @@ from pathlib import Path
 
 from . import __version__
 from .audit import audit_file, audit_result_to_json
+from .enrich import build_enrichment
 from .remediate import remediate
 from .report import write_report
 from .rules import RULES, AuditContext
@@ -60,8 +61,10 @@ def cmd_audit(args) -> int:
         Path(args.json).write_text(audit_result_to_json(result) + "\n")
         print(f"findings written: {args.json}")
     if args.report:
-        write_report(result, args.report, source_path=args.file)
-        print(f"report written: {args.report}")
+        enrichment, source = build_enrichment(result, live=getattr(args, "enrich", False))
+        write_report(result, args.report, source_path=args.file,
+                     enrichment=enrichment, enrichment_source=source)
+        print(f"report written: {args.report} (normative text: {source})")
 
     s = result["summary"]
     verdict = "PASS" if s["pass"] else "FAIL"
@@ -121,6 +124,9 @@ def main(argv=None) -> int:
     a.add_argument("--language", default="en-US", help="default language code (default en-US)")
     a.add_argument("--background", default="FFFFFF", help="assumed background RGB for contrast math")
     a.add_argument("--heading-map", help="deterministic structure: '0=Heading 1,4=Heading 2'")
+    a.add_argument("--enrich", action="store_true",
+                   help="fetch normative text live from a locally installed wcag-guidelines-mcp "
+                        "(default: use the bundled offline cache)")
     a.set_defaults(func=cmd_audit)
 
     r = sub.add_parser("remediate", help="apply deterministic fixes from an audit JSON")
