@@ -203,6 +203,64 @@ def test_remediate_clean_is_noop():
 
 
 # ---------------------------------------------------------------------------
+# fix_one (audit -> remediate -> verify)
+# ---------------------------------------------------------------------------
+
+def test_fix_one_clean_doc_is_noop_pass():
+    from docx_a11y.remediate import fix_one
+    out = FIX.parent / "tmp" / "clean_fixed_one.docx"
+    fr = fix_one(FIX / "clean.docx", out)
+    assert fr["status"] == "pass"
+    assert fr["reaudit"]["summary"]["total"] == 0
+    assert Path(out).exists()
+
+
+def test_fix_one_fixable_doc_passes_after_fix():
+    from docx_a11y.remediate import fix_one
+    out = FIX.parent / "tmp" / "fixable_fixed_one.docx"
+    ctx = AuditContext(source_name="fixable.docx",
+                       heading_map={0: "Heading 1", 3: "Heading 2", 4: "Heading 2"})
+    fr = fix_one(FIX / "fixable.docx", out, ctx)
+    assert fr["status"] == "pass"
+    assert fr["findings_before"] == 6
+    assert fr["reaudit"]["summary"]["total"] == 0
+    assert fr["remediation"]["ok"] is True
+    # source untouched
+    assert audit_file(FIX / "fixable.docx")["summary"]["total"] == 6
+
+
+def test_fix_one_residual_manual_only_passes():
+    """violations.docx: blocking findings (heading skip, table header) are fixable
+    without a map; manual findings (multiple-h1, merged-cell) are moderate
+    (non-blocking), so the doc still PASSES after fix."""
+    from docx_a11y.remediate import fix_one
+    out = FIX.parent / "tmp" / "viol_fixed_one.docx"
+    fr = fix_one(FIX / "violations.docx", out)
+    assert fr["status"] == "pass"
+    assert fr["reaudit"]["summary"]["blocking"] == 0
+    # manual findings remain but are non-blocking
+    ids = {f["rule_id"] for f in fr["reaudit"]["findings"]}
+    assert "multiple-h1" in ids and "merged-cell" in ids
+
+
+def test_fix_one_unfixable_blocking_reports_fail():
+    from docx_a11y.remediate import fix_one
+    out = FIX.parent / "tmp" / "fixable_nomap_one.docx"
+    # NO heading map -> headings-none (serious) cannot be fixed -> still blocking
+    fr = fix_one(FIX / "fixable.docx", out)
+    assert fr["status"] == "fail"
+    assert fr["reaudit"]["summary"]["blocking"] >= 1
+    assert any(f["rule_id"] == "headings-none" for f in fr["reaudit"]["findings"])
+
+
+def test_fix_one_error_returns_error_status():
+    from docx_a11y.remediate import fix_one
+    fr = fix_one(FIX / "does-not-exist.docx", FIX.parent / "tmp" / "x.docx")
+    assert fr["status"] == "error"
+    assert fr["error"]
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 

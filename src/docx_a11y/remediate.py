@@ -12,7 +12,7 @@ from pathlib import Path
 
 from docx import Document
 
-from .audit import load_result
+from .audit import audit_file, load_result
 from .findings import Finding
 from .rules import RULES_BY_ID, RULES, AuditContext
 
@@ -118,6 +118,56 @@ def remediate_from_result(src_path, result: dict, out_path, ctx=None) -> Remedia
     apply_fixes(doc, result, rr, ctx)
     doc.save(str(out))
     return rr
+
+
+def fix_one(src_path, out_path=None, ctx=None) -> dict:
+    """Audit -> remediate (if findings) -> verify, for one .docx.
+
+    Never mutates src. Returns a JSON-safe dict:
+      status: "pass" | "fail" | "error"
+        pass  = re-audit has zero blocking findings (doc may still have
+                non-blocking manual findings)
+        fail  = re-audit still has blocking findings after fixes
+        error = could not audit or save (corrupt/missing file)
+      findings_before: int (findings on the source audit; 0 for clean docs)
+      remediation: RemediationResult.to_dict() or None (None when 0 findings)
+      reaudit: full re-audit result dict (None on error)
+      error: str (error status only)
+    """
+    src = Path(src_path)
+    if out_path is None:
+        out_path = src.with_name(src.name + ".fixed.docx")
+    out_path = Path(out_path)
+    if ctx is None:
+        ctx = AuditContext(source_name=src.name)
+    if not ctx.source_name:
+        ctx.source_name = src.name
+
+    base = {"file": src.name, "output_path": str(out_path),
+            "findings_before": 0, "remediation": None, "reaudit": None,
+            "error": None}
+    try:
+        before = audit_file(src, ctx)
+    except Exception as exc:
+        return {**base, "status": "error",
+                "error": f"audit failed: {type(exc).__name__}: {exc}"}
+    base["findings_before"] = before["summary"]["total"]
+
+    try:
+        if before["findings"]:
+            rr = remediate_from_result(src, before, out_path, ctx)
+            base["remediation"] = rr.to_dict()
+        else:
+            # nothing to fix: still emit a copy so --out is always produced
+            Document(str(src)).save(str(out_path))
+        after = audit_file(out_path)
+    except Exception as exc:
+        return {**base, "status": "error",
+                "error": f"remediate/verify failed: {type(exc).__name__}: {exc}"}
+
+    base["reaudit"] = after
+    base["status"] = "pass" if after["summary"]["pass"] else "fail"
+    return base
 
 
 def _class_for(rule_id):

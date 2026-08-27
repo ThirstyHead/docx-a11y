@@ -225,9 +225,10 @@ class HeadingsNone:
     severity = "serious"
 
     def check(self, doc, ctx):
-        if ctx.heading_map:
-            # caller asserts structure is provided via map; nothing to flag
-            return []
+        # Always flag when no heading styles exist, even if ctx.heading_map is
+        # set: the map is the *remedy* (fix applies it), not an excuse to hide
+        # the finding. One-shot workflows (fix_one) audit and remediate with
+        # the same ctx, so suppressing here would starve the fix of its finding.
         any_heading = any(
             p.style is not None and HEADING_RE.fullmatch(p.style.name or "")
             for p in doc.paragraphs
