@@ -43,24 +43,14 @@ class RemediationResult:
                 "skipped": self.skipped, "ok": self.ok}
 
 
-def remediate(src_path, result_path, out_path, ctx=None) -> RemediationResult:
-    src, out = Path(src_path), Path(out_path)
-    res = load_result(result_path)
-    doc = Document(str(src))
-    if ctx is None:
-        ctx = AuditContext(source_name=src.name)
-    if not ctx.source_name:
-        ctx.source_name = src.name
-
-    rr = RemediationResult(output_path=str(out))
-
-    findings = [Finding(**f) for f in res["findings"] if f.get("fixable")]
+def apply_fixes(doc, result: dict, rr: RemediationResult, ctx: AuditContext) -> None:
+    """Apply deterministic fixes for `result`'s fixable findings onto an in-memory
+    Document. Populates rr.applied / rr.skipped. Never raises for rule failures."""
+    findings = [Finding(**f) for f in result["findings"] if f.get("fixable")]
     # group by rule class name (derived from rule_id)
     by_rule = {}
     for f in findings:
-        rid = f.rule_id
-        # map rule_id -> class name
-        rcls = _class_for(rid)
+        rcls = _class_for(f.rule_id)
         by_rule.setdefault(rcls, []).append(f)
 
     for rcls in APPLY_ORDER:
@@ -81,8 +71,8 @@ def remediate(src_path, result_path, out_path, ctx=None) -> RemediationResult:
             if ok:
                 rr.applied.extend([rcls, f.location] for f in rule_findings)
             else:
-                reason = reason if not ok else "fix returned False"
-                rr.skipped.extend([rcls, f.location, reason] for f in rule_findings)
+                rr.skipped.extend([rcls, f.location, reason or "fix returned False"]
+                                   for f in rule_findings)
             continue
         for f in rule_findings:
             reason = None
@@ -95,6 +85,19 @@ def remediate(src_path, result_path, out_path, ctx=None) -> RemediationResult:
                 rr.applied.append([rcls, f.location])
             else:
                 rr.skipped.append([rcls, f.location, reason or "fix returned False"])
+
+
+def remediate(src_path, result_path, out_path, ctx=None) -> RemediationResult:
+    src, out = Path(src_path), Path(out_path)
+    res = load_result(result_path)
+    doc = Document(str(src))
+    if ctx is None:
+        ctx = AuditContext(source_name=src.name)
+    if not ctx.source_name:
+        ctx.source_name = src.name
+
+    rr = RemediationResult(output_path=str(out))
+    apply_fixes(doc, res, rr, ctx)
     doc.save(str(out))
     return rr
 
