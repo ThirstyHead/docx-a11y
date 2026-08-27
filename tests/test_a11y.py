@@ -100,6 +100,26 @@ def test_fixable_remediate_then_pass():
     assert src_reaudit["summary"]["total"] == 6
 
 
+# ---------------------------------------------------------------------------
+# remediate_from_result (in-memory)
+# ---------------------------------------------------------------------------
+
+def test_remediate_from_result_matches_file_variant():
+    from docx_a11y.remediate import remediate, remediate_from_result
+    res = audit_file(FIX / "fixable.docx")
+    ctx = AuditContext(source_name="fixable.docx",
+                       heading_map={0: "Heading 1", 3: "Heading 2", 4: "Heading 2"})
+    out_a = FIX.parent / "tmp" / "fixable_fromresult_a.docx"
+    out_b = FIX.parent / "tmp" / "fixable_fromresult_b.docx"
+    rr_a = remediate(FIX / "fixable.docx", _tmp_json(res), out_a, ctx)
+    rr_b = remediate_from_result(FIX / "fixable.docx", res, out_b, ctx)
+    assert rr_a.applied == rr_b.applied
+    assert rr_a.skipped == rr_b.skipped
+    reaudit = audit_file(out_b)
+    assert reaudit["summary"]["pass"] is True
+    assert reaudit["summary"]["total"] == 0
+
+
 def _tmp_json(result):
     (FIX.parent / "tmp").mkdir(exist_ok=True)
     p = FIX.parent / "tmp" / "audit.json"

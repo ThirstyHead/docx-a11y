@@ -102,6 +102,24 @@ def remediate(src_path, result_path, out_path, ctx=None) -> RemediationResult:
     return rr
 
 
+def remediate_from_result(src_path, result: dict, out_path, ctx=None) -> RemediationResult:
+    """Remediate using an in-memory audit result dict (no findings JSON file).
+
+    Same safety model as remediate(): fresh in-memory Document copy, source
+    untouched, output saved to out_path.
+    """
+    src, out = Path(src_path), Path(out_path)
+    doc = Document(str(src))
+    if ctx is None:
+        ctx = AuditContext(source_name=src.name)
+    if not ctx.source_name:
+        ctx.source_name = src.name
+    rr = RemediationResult(output_path=str(out))
+    apply_fixes(doc, result, rr, ctx)
+    doc.save(str(out))
+    return rr
+
+
 def _class_for(rule_id):
     # rule_ids: title-missing, language-missing, heading-level-skipped, headings-none,
     #           multiple-h1, image-alt-missing, table-header-missing, merged-cell, color-contrast
