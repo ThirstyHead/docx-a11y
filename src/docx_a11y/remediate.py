@@ -8,7 +8,7 @@ Safety model:
   - Output is a new file; the original is untouched.
 """
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from docx import Document
@@ -186,22 +186,22 @@ def _batch_docx_files(directory: Path) -> list:
 def fix_batch(directory, ctx=None) -> dict:
     """fix_one() over every .docx in `directory` (non-recursive), continuing past
     per-file errors. Same ctx (e.g. heading_map, language) applies to all files.
+    Raises NotADirectoryError if `directory` is not a directory.
 
     Returns JSON-safe dict:
       directory, started_at,
       entries: [ fix_one result dicts, in filename order ],
       summary: {total, pass, fail, error,
-                findings_before (sum), findings_after (sum)}
+                findings_before (sum), findings_after (sum; excludes errored
+                files, which have no re-audit)}
     """
     d = Path(directory)
     files = _batch_docx_files(d)
     entries = []
     for p in files:
         # fresh ctx per file so source_name is correct; keep caller knobs
-        fctx = AuditContext(source_name=p.name,
-                            default_language=ctx.default_language if ctx else "en-US",
-                            background_rgb=ctx.background_rgb if ctx else "FFFFFF",
-                            heading_map=dict(ctx.heading_map) if ctx else {})
+        fctx = (replace(ctx, source_name=p.name) if ctx
+                else AuditContext(source_name=p.name))
         entries.append(fix_one(p, None, fctx))
     s = {"total": len(entries),
          "pass": sum(1 for e in entries if e["status"] == "pass"),

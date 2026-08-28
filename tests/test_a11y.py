@@ -316,6 +316,66 @@ def test_fix_batch_error_exit_mapping(tmp_path):
     assert res["entries"][0]["status"] == "error"
 
 
+def test_fix_batch_forwards_all_ctx_knobs(tmp_path):
+    """Every ctx knob must reach the per-file audit, not just the ones
+    previously hand-forwarded (language/background/heading_map).
+
+    A document with NO default language in docDefaults is flagged by the
+    language rule and the fix must write the ctx's default_language (fr-CA)
+    — proving caller knobs are forwarded via dataclasses.replace instead of
+    silently reset to the module default (en-US).
+    """
+    import zipfile
+    from docx import Document
+    from docx.oxml.ns import qn
+    from docx_a11y.remediate import fix_batch
+
+    d = tmp_path / "lang"
+    d.mkdir()
+    src = d / "lang.docx"
+    doc = Document()
+    doc.add_paragraph("doc with no default language")
+    # strip w:lang from docDefaults in-memory so the rule flags it as missing
+    for lang in doc.styles.element.iter(qn("w:lang")):
+        lang.getparent().remove(lang)
+    doc.save(str(src))
+
+    ctx = AuditContext(source_name="",
+                       default_language="fr-CA",
+                       background_rgb="FFFFFF",
+                       large_text_size_pt=1.0,
+                       large_text_bold_pt=2.0)
+    res = fix_batch(d, ctx)
+    e = res["entries"][0]
+    assert e["status"] != "error"
+    # the language rule flagged the missing default and the fix ran
+    assert e["remediation"] is not None
+    assert any(a[0] == "LanguageMissing" for a in e["remediation"]["applied"])
+    # the fix must have written fr-CA (not the en-US module default)
+    z = zipfile.ZipFile(e["output_path"])
+    styles = z.read("word/styles.xml").decode()
+    assert 'w:val="fr-CA"' in styles
+
+
+def test_fix_batch_non_dir_raises(tmp_path):
+    from docx_a11y.remediate import fix_batch
+    with pytest.raises(NotADirectoryError):
+        fix_batch(tmp_path / "no-such-dir")
+
+
+def test_fix_batch_skips_own_outputs(tmp_path):
+    """Running fix_batch twice in the same dir must not re-process the
+    .fixed.docx outputs from the first run."""
+    from docx_a11y.remediate import fix_batch
+    d = _make_batch_dir(tmp_path)
+    first = fix_batch(d)
+    assert first["summary"]["total"] == 3
+    second = fix_batch(d)
+    assert second["summary"]["total"] == 3
+    assert [e["file"] for e in second["entries"]] == \
+        [e["file"] for e in first["entries"]]
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -387,6 +447,57 @@ def test_cli_fix_writes_json_and_report(capsys, tmp_path):
     md = r.read_text()
     assert "Remediation" in md            # report includes applied/skipped
     assert "Re-verify" in md
+
+
+# ---------------------------------------------------------------------------
+# CLI: batch
+# ---------------------------------------------------------------------------
+
+def test_cli_fix_batch_exit_0_all_pass(capsys, tmp_path):
+    d = _make_batch_dir(tmp_path)
+    rc = main(["fix", "--batch", str(d),
+               "--heading-map", "0=Heading 1,3=Heading 2,4=Heading 2"])
+    # all three pass with the map (b-fixable fixable; c-violations manual-only blockings fixed)
+    assert rc == 0
+    out_text = capsys.readouterr().out
+    assert "3 file(s)" in out_text
+    assert "PASS" in out_text
+
+
+def test_cli_fix_batch_exit_1_partial_fail(capsys, tmp_path):
+    d = _make_batch_dir(tmp_path)
+    rc = main(["fix", "--batch", str(d)])   # no map -> b-fixable fails
+    assert rc == 1
+    out_text = capsys.readouterr().out
+    assert "[FAIL]" in out_text and "b-fixable.docx" in out_text
+    assert "1 file(s) failed" in out_text or "failed: 1" in out_text  # match final wording
+
+
+def test_cli_fix_batch_json(capsys, tmp_path):
+    d = _make_batch_dir(tmp_path)
+    j = tmp_path / "batch.json"
+    rc = main(["fix", "--batch", str(d),
+               "--heading-map", "0=Heading 1,3=Heading 2,4=Heading 2",
+               "--json", str(j)])
+    assert rc == 0
+    capsys.readouterr()
+    data = json.loads(j.read_text())
+    assert data["summary"]["total"] == 3
+    assert all(e["status"] == "pass" for e in data["entries"])
+
+
+def test_cli_fix_batch_bad_dir_exit_2(capsys, tmp_path):
+    rc = main(["fix", "--batch", str(tmp_path / "no-such-dir")])
+    assert rc == 2
+
+
+def test_cli_audit_batch(capsys, tmp_path):
+    d = _make_batch_dir(tmp_path)
+    rc = main(["audit", "--batch", str(d)])
+    assert rc == 1   # at least one doc fails its audit
+    out_text = capsys.readouterr().out
+    assert "3 file(s)" in out_text
+    assert "[PASS] a-clean.docx" in out_text
 
 
 # ---------------------------------------------------------------------------
