@@ -28,3 +28,7 @@ jobs:
           docx-a11y rules
           docx-a11y audit tests/fixtures/clean.docx || true
           docx-a11y audit tests/fixtures/violations.docx --json /tmp/v.json || true
+          docx-a11y fix tests/fixtures/fixable.docx --out /tmp/f.docx \
+            --heading-map '0=Heading 1,3=Heading 2,4=Heading 2'
+          test -f /tmp/f.docx
+          docx-a11y audit tests/fixtures/fixable.docx --batch tests/fixtures || true
