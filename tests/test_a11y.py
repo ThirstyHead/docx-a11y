@@ -261,6 +261,62 @@ def test_fix_one_error_returns_error_status():
 
 
 # ---------------------------------------------------------------------------
+# fix_batch (directory mode)
+# ---------------------------------------------------------------------------
+
+def _make_batch_dir(tmp_path):
+    d = tmp_path / "docs"
+    d.mkdir()
+    shutil.copy(FIX / "clean.docx", d / "a-clean.docx")
+    shutil.copy(FIX / "fixable.docx", d / "b-fixable.docx")
+    shutil.copy(FIX / "violations.docx", d / "c-violations.docx")
+    (d / "lock~$temp.docx").write_bytes(b"junk")   # must be skipped
+    (d / "notes.txt").write_text("not a docx")      # must be ignored
+    return d
+
+
+def test_fix_batch_processes_all_and_aggregates(tmp_path):
+    from docx_a11y.remediate import fix_batch
+    d = _make_batch_dir(tmp_path)
+    ctx = AuditContext(source_name="",
+                       heading_map={0: "Heading 1", 3: "Heading 2", 4: "Heading 2"})
+    res = fix_batch(d, ctx)
+    names = [e["file"] for e in res["entries"]]
+    assert names == ["a-clean.docx", "b-fixable.docx", "c-violations.docx"]
+    assert res["summary"]["total"] == 3
+    # clean passes (0 findings); fixable passes with the map (6 findings all fixed);
+    # violations passes WITHOUT needing the map — its blocking findings
+    # (heading-level-skipped, table-header-missing) are fixable as-is, and the
+    # manual findings (multiple-h1, merged-cell) are moderate (non-blocking).
+    assert res["summary"]["pass"] == 3
+    assert res["summary"]["fail"] == 0
+    assert res["summary"]["error"] == 0
+    # outputs all exist, sources untouched
+    for e in res["entries"]:
+        assert Path(e["output_path"]).exists()
+    assert audit_file(FIX / "fixable.docx")["summary"]["total"] == 6
+
+
+def test_fix_batch_exit_mapping(tmp_path):
+    from docx_a11y.remediate import fix_batch
+    d = _make_batch_dir(tmp_path)
+    res = fix_batch(d)   # no heading map: b-fixable fails (headings-none unfixable, serious)
+    assert res["summary"]["pass"] == 2   # a-clean (no findings) + c-violations (blockings fixable w/o map)
+    assert res["summary"]["fail"] == 1   # b-fixable: headings-none still blocking after fix
+    assert res["summary"]["error"] == 0
+
+
+def test_fix_batch_error_exit_mapping(tmp_path):
+    from docx_a11y.remediate import fix_batch
+    d = tmp_path / "bad"
+    d.mkdir()
+    (d / "corrupt.docx").write_bytes(b"not a zip at all")
+    res = fix_batch(d)
+    assert res["summary"]["error"] == 1
+    assert res["entries"][0]["status"] == "error"
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 

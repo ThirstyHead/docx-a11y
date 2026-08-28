@@ -7,6 +7,7 @@ Safety model:
   - Every fix has a precondition; failures are recorded, never exceptions.
   - Output is a new file; the original is untouched.
 """
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -168,6 +169,49 @@ def fix_one(src_path, out_path=None, ctx=None) -> dict:
     base["reaudit"] = after
     base["status"] = "pass" if after["summary"]["pass"] else "fail"
     return base
+
+
+def _batch_docx_files(directory: Path) -> list:
+    """Sorted .docx files, non-recursive; skip Office lock files and our own .fixed.docx outputs."""
+    if not directory.is_dir():
+        raise NotADirectoryError(directory)
+    files = [p for p in directory.iterdir()
+             if p.is_file()
+             and p.suffix.lower() == ".docx"
+             and "~$" not in p.name
+             and not p.name.endswith(".fixed.docx")]
+    return sorted(files, key=lambda p: p.name)
+
+
+def fix_batch(directory, ctx=None) -> dict:
+    """fix_one() over every .docx in `directory` (non-recursive), continuing past
+    per-file errors. Same ctx (e.g. heading_map, language) applies to all files.
+
+    Returns JSON-safe dict:
+      directory, started_at,
+      entries: [ fix_one result dicts, in filename order ],
+      summary: {total, pass, fail, error,
+                findings_before (sum), findings_after (sum)}
+    """
+    d = Path(directory)
+    files = _batch_docx_files(d)
+    entries = []
+    for p in files:
+        # fresh ctx per file so source_name is correct; keep caller knobs
+        fctx = AuditContext(source_name=p.name,
+                            default_language=ctx.default_language if ctx else "en-US",
+                            background_rgb=ctx.background_rgb if ctx else "FFFFFF",
+                            heading_map=dict(ctx.heading_map) if ctx else {})
+        entries.append(fix_one(p, None, fctx))
+    s = {"total": len(entries),
+         "pass": sum(1 for e in entries if e["status"] == "pass"),
+         "fail": sum(1 for e in entries if e["status"] == "fail"),
+         "error": sum(1 for e in entries if e["status"] == "error"),
+         "findings_before": sum(e["findings_before"] for e in entries),
+         "findings_after": sum(e["reaudit"]["summary"]["total"] for e in entries if e["reaudit"])}
+    return {"directory": str(d),
+            "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "entries": entries, "summary": s}
 
 
 def _class_for(rule_id):
