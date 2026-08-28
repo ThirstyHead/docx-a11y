@@ -7,12 +7,13 @@ Safety model:
   - Every fix has a precondition; failures are recorded, never exceptions.
   - Output is a new file; the original is untouched.
 """
-from dataclasses import dataclass, field
+import time
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from docx import Document
 
-from .audit import load_result
+from .audit import audit_file, load_result
 from .findings import Finding
 from .rules import RULES_BY_ID, RULES, AuditContext
 
@@ -43,24 +44,14 @@ class RemediationResult:
                 "skipped": self.skipped, "ok": self.ok}
 
 
-def remediate(src_path, result_path, out_path, ctx=None) -> RemediationResult:
-    src, out = Path(src_path), Path(out_path)
-    res = load_result(result_path)
-    doc = Document(str(src))
-    if ctx is None:
-        ctx = AuditContext(source_name=src.name)
-    if not ctx.source_name:
-        ctx.source_name = src.name
-
-    rr = RemediationResult(output_path=str(out))
-
-    findings = [Finding(**f) for f in res["findings"] if f.get("fixable")]
+def apply_fixes(doc, result: dict, rr: RemediationResult, ctx: AuditContext) -> None:
+    """Apply deterministic fixes for `result`'s fixable findings onto an in-memory
+    Document. Populates rr.applied / rr.skipped. Never raises for rule failures."""
+    findings = [Finding(**f) for f in result["findings"] if f.get("fixable")]
     # group by rule class name (derived from rule_id)
     by_rule = {}
     for f in findings:
-        rid = f.rule_id
-        # map rule_id -> class name
-        rcls = _class_for(rid)
+        rcls = _class_for(f.rule_id)
         by_rule.setdefault(rcls, []).append(f)
 
     for rcls in APPLY_ORDER:
@@ -81,8 +72,8 @@ def remediate(src_path, result_path, out_path, ctx=None) -> RemediationResult:
             if ok:
                 rr.applied.extend([rcls, f.location] for f in rule_findings)
             else:
-                reason = reason if not ok else "fix returned False"
-                rr.skipped.extend([rcls, f.location, reason] for f in rule_findings)
+                rr.skipped.extend([rcls, f.location, reason or "fix returned False"]
+                                   for f in rule_findings)
             continue
         for f in rule_findings:
             reason = None
@@ -95,8 +86,132 @@ def remediate(src_path, result_path, out_path, ctx=None) -> RemediationResult:
                 rr.applied.append([rcls, f.location])
             else:
                 rr.skipped.append([rcls, f.location, reason or "fix returned False"])
+
+
+def remediate(src_path, result_path, out_path, ctx=None) -> RemediationResult:
+    src, out = Path(src_path), Path(out_path)
+    res = load_result(result_path)
+    doc = Document(str(src))
+    if ctx is None:
+        ctx = AuditContext(source_name=src.name)
+    if not ctx.source_name:
+        ctx.source_name = src.name
+
+    rr = RemediationResult(output_path=str(out))
+    apply_fixes(doc, res, rr, ctx)
     doc.save(str(out))
     return rr
+
+
+def remediate_from_result(src_path, result: dict, out_path, ctx=None) -> RemediationResult:
+    """Remediate using an in-memory audit result dict (no findings JSON file).
+
+    Same safety model as remediate(): fresh in-memory Document copy, source
+    untouched, output saved to out_path.
+    """
+    src, out = Path(src_path), Path(out_path)
+    doc = Document(str(src))
+    if ctx is None:
+        ctx = AuditContext(source_name=src.name)
+    if not ctx.source_name:
+        ctx.source_name = src.name
+    rr = RemediationResult(output_path=str(out))
+    apply_fixes(doc, result, rr, ctx)
+    doc.save(str(out))
+    return rr
+
+
+def fix_one(src_path, out_path=None, ctx=None) -> dict:
+    """Audit -> remediate (if findings) -> verify, for one .docx.
+
+    Never mutates src. Returns a JSON-safe dict:
+      status: "pass" | "fail" | "error"
+        pass  = re-audit has zero blocking findings (doc may still have
+                non-blocking manual findings)
+        fail  = re-audit still has blocking findings after fixes
+        error = could not audit or save (corrupt/missing file)
+      findings_before: int (findings on the source audit; 0 for clean docs)
+      remediation: RemediationResult.to_dict() or None (None when 0 findings)
+      reaudit: full re-audit result dict (None on error)
+      error: str (error status only)
+    """
+    src = Path(src_path)
+    if out_path is None:
+        out_path = src.with_name(src.name + ".fixed.docx")
+    out_path = Path(out_path)
+    if ctx is None:
+        ctx = AuditContext(source_name=src.name)
+    if not ctx.source_name:
+        ctx.source_name = src.name
+
+    base = {"file": src.name, "output_path": str(out_path),
+            "findings_before": 0, "remediation": None, "reaudit": None,
+            "error": None}
+    try:
+        before = audit_file(src, ctx)
+    except Exception as exc:
+        return {**base, "status": "error",
+                "error": f"audit failed: {type(exc).__name__}: {exc}"}
+    base["findings_before"] = before["summary"]["total"]
+
+    try:
+        if before["findings"]:
+            rr = remediate_from_result(src, before, out_path, ctx)
+            base["remediation"] = rr.to_dict()
+        else:
+            # nothing to fix: still emit a copy so --out is always produced
+            Document(str(src)).save(str(out_path))
+        after = audit_file(out_path)
+    except Exception as exc:
+        return {**base, "status": "error",
+                "error": f"remediate/verify failed: {type(exc).__name__}: {exc}"}
+
+    base["reaudit"] = after
+    base["status"] = "pass" if after["summary"]["pass"] else "fail"
+    return base
+
+
+def _batch_docx_files(directory: Path) -> list:
+    """Sorted .docx files, non-recursive; skip Office lock files and our own .fixed.docx outputs."""
+    if not directory.is_dir():
+        raise NotADirectoryError(directory)
+    files = [p for p in directory.iterdir()
+             if p.is_file()
+             and p.suffix.lower() == ".docx"
+             and "~$" not in p.name
+             and not p.name.endswith(".fixed.docx")]
+    return sorted(files, key=lambda p: p.name)
+
+
+def fix_batch(directory, ctx=None) -> dict:
+    """fix_one() over every .docx in `directory` (non-recursive), continuing past
+    per-file errors. Same ctx (e.g. heading_map, language) applies to all files.
+    Raises NotADirectoryError if `directory` is not a directory.
+
+    Returns JSON-safe dict:
+      directory, started_at,
+      entries: [ fix_one result dicts, in filename order ],
+      summary: {total, pass, fail, error,
+                findings_before (sum), findings_after (sum; excludes errored
+                files, which have no re-audit)}
+    """
+    d = Path(directory)
+    files = _batch_docx_files(d)
+    entries = []
+    for p in files:
+        # fresh ctx per file so source_name is correct; keep caller knobs
+        fctx = (replace(ctx, source_name=p.name) if ctx
+                else AuditContext(source_name=p.name))
+        entries.append(fix_one(p, None, fctx))
+    s = {"total": len(entries),
+         "pass": sum(1 for e in entries if e["status"] == "pass"),
+         "fail": sum(1 for e in entries if e["status"] == "fail"),
+         "error": sum(1 for e in entries if e["status"] == "error"),
+         "findings_before": sum(e["findings_before"] for e in entries),
+         "findings_after": sum(e["reaudit"]["summary"]["total"] for e in entries if e["reaudit"])}
+    return {"directory": str(d),
+            "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "entries": entries, "summary": s}
 
 
 def _class_for(rule_id):

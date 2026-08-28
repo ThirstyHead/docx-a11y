@@ -22,6 +22,25 @@ docx-a11y remediate recipe.docx --findings findings.json \
 docx-a11y audit recipe_fixed.docx
 ```
 
+### One-command fix (recommended)
+
+```bash
+docx-a11y fix recipe.docx --heading-map '0=Heading 1,4=Heading 2'
+# => recipe.docx.fixed.docx; exits 0 on PASS, 1 if blocking findings remain, 2 on error
+# --json out.json  full before/after result   --report out.md  markdown report
+```
+
+### Batch mode
+
+```bash
+docx-a11y fix --batch ./policy-docs        # fixes every .docx in the dir (non-recursive)
+docx-a11y audit --batch ./policy-docs      # audit-only triage
+# outputs: <file>.fixed.docx per file; summary line: pass=N fail=N error=N
+# exit: 0 all pass, 1 any fail, 2 any error (corrupt/missing)
+```
+
+Batch notes: `.docx` only, non-recursive, skips `~$*` lock files and `*.fixed.docx` outputs; the same `--heading-map`/`--language`/`--background` apply to every file (heading maps are per-file paragraph indexes, so use a shared map only when the files share structure). `fix --batch --report` is not supported — use `--json` for the aggregated result.
+
 Use the venv entry point on machines where the console script isn't on PATH:
 
 ```bash
@@ -37,8 +56,19 @@ Use the venv entry point on machines where the console script isn't on PATH:
 | `--language CODE` | `en-US` | default language used when fixing SC 3.1.1 |
 | `--background RRGGBB` | `FFFFFF` | assumed page background for contrast math |
 | `--heading-map 'i=Heading N'` | — | deterministic structure: paragraph index → heading style |
+| `--enrich` | off | fetch normative text live from a local wcag-guidelines-mcp (default: bundled offline cache) |
 
 `remediate` accepts the same `--language`, `--background`, `--heading-map` flags.
+
+### fix exit codes
+
+| exit | meaning |
+|---|---|
+| `0` | PASS after fix (no blocking findings remain) |
+| `1` | FAIL — blocking findings remain after fix (which ones are listed on stdout) |
+| `2` | error — file unreadable/corrupt; in batch mode: any doc errored |
+
+Batch mode (`fix --batch DIR`, `audit --batch DIR`): non-recursive `*.docx`, skips `~$*` lock files and `*.fixed.docx` outputs; exit 0 = all pass, 1 = any fail, 2 = any error.
 
 ## Rules
 
@@ -94,7 +124,7 @@ src/docx_a11y/
   contrast.py     WCAG relative-luminance contrast math
   report.py       findings JSON -> markdown
   findings.py     Finding data model + summary
-  cli.py          docx-a11y audit | remediate | rules
+  cli.py          docx-a11y audit | remediate | fix | rules (fix and audit also: --batch DIR)
 tests/
   fixtures/       committed .docx golden files
   make_fixtures.py  regenerate fixtures
