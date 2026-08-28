@@ -3,16 +3,22 @@
 Usage:
   docx-a11y audit FILE [--json out.json] [--report out.md]
               [--language en-US] [--background FFFFFF]
-              [--heading-map '0=Heading 1,4=Heading 2'] [--batch DIR]
+              [--heading-map '0=Heading 1,4=Heading 2'] [--enrich]
+  docx-a11y audit --batch DIR [--json out.json] [same flags]
   docx-a11y remediate FILE --findings audit.json --out FILE_fixed.docx
               [--language en-US] [--background FFFFFF]
               [--heading-map '0=Heading 1,4=Heading 2']
   docx-a11y fix FILE [--out FILE.fixed.docx] [--json out.json] [--report out.md]
               [--language en-US] [--background FFFFFF]
               [--heading-map '0=Heading 1,4=Heading 2'] [--enrich]
-  docx-a11y fix --batch DIR [same flags except --out/--report]
-  docx-a11y audit --batch DIR
+  docx-a11y fix --batch DIR [--json out.json] [same flags except --out/--report]
   docx-a11y rules
+
+Batch mode: non-recursive *.docx in the directory; skips Office lock files
+(~$*) and our own *.fixed.docx outputs. The same --language/--background/
+--heading-map apply to every file (heading maps are per-file paragraph
+indexes, so a shared map is best-effort). fix --batch --report is unsupported
+(use --json for the aggregated result).
 
 Exit codes (audit): 0 = pass (no blocking findings), 1 = fail, 2 = usage/IO error.
 Exit codes (fix):    0 = PASS after fix, 1 = FAIL (blocking findings remain),
@@ -27,7 +33,7 @@ from pathlib import Path
 from . import __version__
 from .audit import audit_file, audit_result_to_json
 from .enrich import build_enrichment
-from .remediate import fix_one, remediate
+from .remediate import _batch_docx_files, fix_batch, fix_one, remediate
 from .report import write_report
 from .rules import RULES, AuditContext
 
@@ -56,6 +62,8 @@ def _ctx(args, source_name) -> AuditContext:
 
 
 def cmd_audit(args) -> int:
+    if getattr(args, "batch", None):
+        return _cmd_audit_batch(args)
     ctx = _ctx(args, args.file)
     try:
         result = audit_file(args.file, ctx)
@@ -86,6 +94,44 @@ def cmd_audit(args) -> int:
     return 0 if s["pass"] else 1
 
 
+def _cmd_audit_batch(args) -> int:
+    """audit --batch DIR: audit every .docx in the dir (non-recursive),
+    per-file verdict lines + aggregate; --json writes ONE aggregated file."""
+    results = {}
+    failed = 0
+    try:
+        files = _batch_docx_files(Path(args.batch))
+    except NotADirectoryError as e:
+        print(f"error: not a directory: {e}", file=sys.stderr)
+        return 2
+    if not files:
+        print(f"error: no .docx files in {args.batch}", file=sys.stderr)
+        return 2
+    for p in files:
+        pctx = _ctx(args, p.name)
+        try:
+            result = audit_file(p, pctx)
+        except Exception as e:
+            failed += 1
+            results[p.name] = {"error": f"{type(e).__name__}: {e}"}
+            print(f"[ERROR] {p.name}: {type(e).__name__}: {e}", file=sys.stderr)
+            continue
+        s = result["summary"]
+        verdict = "PASS" if s["pass"] else "FAIL"
+        if not s["pass"]:
+            failed += 1
+        results[p.name] = result
+        print(f"[{verdict}] {p.name}: {s['total']} findings "
+              f"(critical={s['by_severity']['critical']}, serious={s['by_severity']['serious']}, "
+              f"moderate={s['by_severity']['moderate']})")
+    if args.json:
+        agg = {"directory": str(Path(args.batch)), "files": results}
+        Path(args.json).write_text(json.dumps(agg, indent=2, sort_keys=True) + "\n")
+        print(f"batch findings written: {args.json}")
+    print(f"audit batch {args.batch}: {len(files)} file(s), {failed} failed")
+    return 0 if failed == 0 else 1
+
+
 def cmd_remediate(args) -> int:
     ctx = _ctx(args, args.file)
     try:
@@ -108,6 +154,11 @@ def cmd_remediate(args) -> int:
 
 
 def cmd_fix(args) -> int:
+    if getattr(args, "batch", None):
+        return _cmd_fix_batch(args)
+    if not args.file:
+        print("error: FILE required (or use --batch DIR)", file=sys.stderr)
+        return 2
     ctx = _ctx(args, args.file)
     out = args.out or str(Path(args.file).with_name(Path(args.file).name + ".fixed.docx"))
     fr = fix_one(args.file, out, ctx)
@@ -147,6 +198,41 @@ def cmd_fix(args) -> int:
     return 0 if fr["status"] == "pass" else 1
 
 
+def _cmd_fix_batch(args) -> int:
+    """fix --batch DIR: fix every .docx in the dir (non-recursive),
+    per-file before->after lines + aggregate; --json writes the full
+    aggregate dict. Exit: 2 if any error, 1 if any fail, else 0."""
+    if getattr(args, "report", None):
+        print("warning: --report is not supported in batch mode; "
+              "use --json (one aggregated file)", file=sys.stderr)
+    ctx = _ctx(args, "")
+    try:
+        res = fix_batch(args.batch, ctx)
+    except NotADirectoryError as e:
+        print(f"error: not a directory: {e}", file=sys.stderr)
+        return 2
+    if not res["entries"]:
+        print(f"error: no .docx files in {args.batch}", file=sys.stderr)
+        return 2
+    s = res["summary"]
+    for e in res["entries"]:
+        mark = {"pass": "PASS", "fail": "FAIL", "error": "ERROR"}[e["status"]]
+        after = e["reaudit"]["summary"]["total"] if e["reaudit"] else "?"
+        extra = f" :: {e['error']}" if e["status"] == "error" else ""
+        print(f"[{mark}] {e['file']}: {e['findings_before']} -> {after}{extra}")
+    failed = s["fail"] + s["error"]
+    print(f"fix batch {args.batch}: {s['total']} file(s) — "
+          f"pass={s['pass']} fail={s['fail']} error={s['error']} "
+          f"(findings {s['findings_before']} -> {s['findings_after']})")
+    if args.json:
+        Path(args.json).write_text(json.dumps(res, indent=2, sort_keys=True) + "\n")
+        print(f"batch result written: {args.json}")
+    print(f"{failed} file(s) failed")
+    if s["error"]:
+        return 2
+    return 0 if s["fail"] == 0 else 1
+
+
 def cmd_rules(_args) -> int:
     print(f"{'rule_id':28s} {'sc':6s} {'severity':9s} fixable-rules")
     for r in RULES:
@@ -167,7 +253,8 @@ def main(argv=None) -> int:
     sub = p.add_subparsers(dest="cmd", required=True)
 
     a = sub.add_parser("audit", help="audit a .docx for WCAG violations")
-    a.add_argument("file")
+    a.add_argument("file", nargs="?", help=".docx to audit (omit when using --batch)")
+    a.add_argument("--batch", help="audit every .docx in a directory (non-recursive)")
     a.add_argument("--json", help="write findings JSON")
     a.add_argument("--report", help="write markdown report")
     a.add_argument("--language", default="en-US", help="default language code (default en-US)")
@@ -188,7 +275,8 @@ def main(argv=None) -> int:
     r.set_defaults(func=cmd_remediate)
 
     fx = sub.add_parser("fix", help="audit + remediate + verify in one step (source untouched)")
-    fx.add_argument("file")
+    fx.add_argument("file", nargs="?", help=".docx to fix (omit when using --batch)")
+    fx.add_argument("--batch", help="process every .docx in a directory instead of one file (non-recursive)")
     fx.add_argument("--out", help="output .docx (default: <file>.fixed.docx)")
     fx.add_argument("--json", help="write full fix result JSON (before/after/remediation)")
     fx.add_argument("--report", help="write markdown report (re-audit + remediation section)")
