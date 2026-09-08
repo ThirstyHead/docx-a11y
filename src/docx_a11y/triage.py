@@ -1,33 +1,30 @@
 """Interactive terminal triage workflow for Word document remediation."""
-import re
 from pathlib import Path
 from typing import Any, Callable, Optional
 from docx import Document
+from docx.oxml import parse_xml
+from docx.oxml.ns import qn
 from .audit import audit_file
+from .rules import _iter_images
 
 
 def _set_image_alt_text(doc: Any, location: str, alt_text: str):
-    # Location format usually 'paragraph[i].run[j]' or similar
-    # Find all inline shapes or drawings
-    for p in doc.paragraphs:
-        for r in p.runs:
-            for child in r._r:
-                if child.tag.endswith("drawing"):
-                    for cNvPr in child.iter():
-                        if cNvPr.tag.endswith("cNvPr") or cNvPr.tag.endswith("docPr"):
-                            cNvPr.set("descr", alt_text)
-                            return
+    for kind, loc, d in _iter_images(doc):
+        if not location or loc == location:
+            for docPr in d.iter(qn("wp:docPr")):
+                docPr.set("descr", alt_text)
+                return
 
 
 def _mark_image_decorative(doc: Any, location: str):
-    for p in doc.paragraphs:
-        for r in p.runs:
-            for child in r._r:
-                if child.tag.endswith("drawing"):
-                    for cNvPr in child.iter():
-                        if cNvPr.tag.endswith("cNvPr") or cNvPr.tag.endswith("docPr"):
-                            cNvPr.set("descr", "")
-                            return
+    for kind, loc, d in _iter_images(doc):
+        if not location or loc == location:
+            for docPr in d.iter(qn("wp:docPr")):
+                dec_elem = parse_xml(
+                    '<adec:decorative xmlns:adec="http://schemas.microsoft.com/office/drawing/2021/oembed" val="1"/>'
+                )
+                docPr.append(dec_elem)
+                return
 
 
 def _set_doc_title(doc: Any, title_text: str):
