@@ -1,0 +1,12 @@
+:root {
+  --bg: #ffffff;
+  --fg: #111827;
+  --muted: #d1d5db;
+  --accent: #2563eb;
+  --link: #1d4ed8;
+  --code-bg: #f3f4f6;
+  --sev-critical: #b91c1c;
+  --sev-serious: #c2410c;
+  --sev-moderate: #854d0e;
+  --sev-minor: #374151;
+}
