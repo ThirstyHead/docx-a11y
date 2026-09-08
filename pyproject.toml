@@ -7,23 +7,46 @@ name = "docx-a11y"
 version = "0.1.0"
 description = "Audit and remediate Word .docx files against WCAG 2.1 AA (standalone, no AI required)"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "docx-a11y contributors" }]
 keywords = ["accessibility", "wcag", "docx", "word", "ooxml", "audit", "remediation"]
 dependencies = [
     "python-docx-ng>=2.1,<3",
     "wcag-contrast-ratio>=0.9,<1",
+    "markdown>=3.6,<4",
+    "pymupdf>=1.24",
+    "pikepdf>=9.0",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7"]
+gui = [
+    "PySide6>=6.5",
+]
+dev = [
+    "PySide6>=6.5",
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "pytest-qt>=4.4.0",
+]
+all = [
+    "docx-a11y[dev,gui]",
+]
 
 [project.scripts]
 docx-a11y = "docx_a11y.cli:main"
+docx-a11y-gui = "docx_a11y.gui.app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+docx_a11y = [
+    "sc_cache.json",
+    "reports/themes/**/*.css",
+    "reports/themes/**/*.json",
+    "reports/themes/**/*.md",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,0 +1,6 @@
+{
+  "name": "print",
+  "label": "Print Monochromatic",
+  "mode": "light",
+  "default": false
+}

@@ -7,6 +7,7 @@ Safety model:
   - Every fix has a precondition; failures are recorded, never exceptions.
   - Output is a new file; the original is untouched.
 """
+import hashlib
 import time
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -34,6 +35,8 @@ class RemediationResult:
     output_path: str
     applied: list = field(default_factory=list)    # [rule_id, location]
     skipped: list = field(default_factory=list)    # [rule_id, location, reason]
+    original_sha256: str = ""
+    original_file_immutable: bool = True
 
     @property
     def ok(self):
@@ -41,7 +44,9 @@ class RemediationResult:
 
     def to_dict(self):
         return {"output_path": self.output_path, "applied": self.applied,
-                "skipped": self.skipped, "ok": self.ok}
+                "skipped": self.skipped, "ok": self.ok,
+                "original_sha256": self.original_sha256,
+                "original_file_immutable": self.original_file_immutable}
 
 
 def apply_fixes(doc, result: dict, rr: RemediationResult, ctx: AuditContext) -> None:
@@ -89,7 +94,13 @@ def apply_fixes(doc, result: dict, rr: RemediationResult, ctx: AuditContext) -> 
 
 
 def remediate(src_path, result_path, out_path, ctx=None) -> RemediationResult:
-    src, out = Path(src_path), Path(out_path)
+    src, out = Path(src_path).resolve(), Path(out_path).resolve()
+    if src == out:
+        raise ValueError(
+            "Error: output document cannot match input document. "
+            "docx-a11y strictly guarantees that original files remain untouched and immutable."
+        )
+    sha256_before = hashlib.sha256(src.read_bytes()).hexdigest()
     res = load_result(result_path)
     doc = Document(str(src))
     if ctx is None:
@@ -97,9 +108,20 @@ def remediate(src_path, result_path, out_path, ctx=None) -> RemediationResult:
     if not ctx.source_name:
         ctx.source_name = src.name
 
-    rr = RemediationResult(output_path=str(out))
+    rr = RemediationResult(
+        output_path=str(out),
+        original_sha256=sha256_before,
+        original_file_immutable=True,
+    )
     apply_fixes(doc, res, rr, ctx)
+    out.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(out))
+
+    sha256_after = hashlib.sha256(src.read_bytes()).hexdigest()
+    if sha256_before != sha256_after:
+        raise RuntimeError(
+            f"Integrity check failed: input document '{src}' was altered during remediation!"
+        )
     return rr
 
 
@@ -109,16 +131,65 @@ def remediate_from_result(src_path, result: dict, out_path, ctx=None) -> Remedia
     Same safety model as remediate(): fresh in-memory Document copy, source
     untouched, output saved to out_path.
     """
-    src, out = Path(src_path), Path(out_path)
+    src, out = Path(src_path).resolve(), Path(out_path).resolve()
+    if src == out:
+        raise ValueError(
+            "Error: output document cannot match input document. "
+            "docx-a11y strictly guarantees that original files remain untouched and immutable."
+        )
+    sha256_before = hashlib.sha256(src.read_bytes()).hexdigest()
     doc = Document(str(src))
     if ctx is None:
         ctx = AuditContext(source_name=src.name)
     if not ctx.source_name:
         ctx.source_name = src.name
-    rr = RemediationResult(output_path=str(out))
+    rr = RemediationResult(
+        output_path=str(out),
+        original_sha256=sha256_before,
+        original_file_immutable=True,
+    )
     apply_fixes(doc, result, rr, ctx)
+    out.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(out))
+
+    sha256_after = hashlib.sha256(src.read_bytes()).hexdigest()
+    if sha256_before != sha256_after:
+        raise RuntimeError(
+            f"Integrity check failed: input document '{src}' was altered during remediation!"
+        )
     return rr
+
+
+def remediate_document(src_path, out_path, ctx=None) -> dict:
+    """Twin API matching pptx-a11y remediate_presentation.
+
+    Remediates src_path into out_path and returns fixes summary dict.
+    Strictly verifies src_path immutability via pre/post SHA-256.
+    """
+    src = Path(src_path).resolve()
+    out = Path(out_path).resolve()
+    if src == out:
+        raise ValueError(
+            "Error: output document cannot match input document. "
+            "docx-a11y strictly guarantees that original files remain untouched and immutable."
+        )
+    sha256_before = hashlib.sha256(src.read_bytes()).hexdigest()
+    audit_res = audit_file(src, ctx)
+    rr = remediate_from_result(src, audit_res, out, ctx)
+    sha256_after = hashlib.sha256(src.read_bytes()).hexdigest()
+    if sha256_before != sha256_after:
+        raise RuntimeError(
+            f"Integrity check failed: input document '{src}' was altered during remediation!"
+        )
+    return {
+        "output_path": str(out),
+        "applied_count": len(rr.applied),
+        "skipped_count": len(rr.skipped),
+        "applied": rr.applied,
+        "skipped": rr.skipped,
+        "original_sha256": sha256_before,
+        "original_file_immutable": True,
+    }
 
 
 def fix_one(src_path, out_path=None, ctx=None) -> dict:
@@ -139,6 +210,19 @@ def fix_one(src_path, out_path=None, ctx=None) -> dict:
     if out_path is None:
         out_path = src.with_name(src.name + ".fixed.docx")
     out_path = Path(out_path)
+    if src.resolve() == out_path.resolve():
+        return {"file": src.name, "output_path": str(out_path),
+                "findings_before": 0, "remediation": None, "reaudit": None,
+                "status": "error",
+                "error": "output document cannot match input document; source must remain immutable"}
+
+    try:
+        sha256_before = hashlib.sha256(src.read_bytes()).hexdigest()
+    except Exception as exc:
+        return {"file": src.name, "output_path": str(out_path),
+                "findings_before": 0, "remediation": None, "reaudit": None,
+                "status": "error", "error": f"read failed: {type(exc).__name__}: {exc}"}
+
     if ctx is None:
         ctx = AuditContext(source_name=src.name)
     if not ctx.source_name:
@@ -146,7 +230,7 @@ def fix_one(src_path, out_path=None, ctx=None) -> dict:
 
     base = {"file": src.name, "output_path": str(out_path),
             "findings_before": 0, "remediation": None, "reaudit": None,
-            "error": None}
+            "error": None, "original_sha256": sha256_before}
     try:
         before = audit_file(src, ctx)
     except Exception as exc:
@@ -160,11 +244,18 @@ def fix_one(src_path, out_path=None, ctx=None) -> dict:
             base["remediation"] = rr.to_dict()
         else:
             # nothing to fix: still emit a copy so --out is always produced
+            out_path.parent.mkdir(parents=True, exist_ok=True)
             Document(str(src)).save(str(out_path))
         after = audit_file(out_path)
     except Exception as exc:
         return {**base, "status": "error",
                 "error": f"remediate/verify failed: {type(exc).__name__}: {exc}"}
+
+    # Verify original file was strictly preserved
+    sha256_after = hashlib.sha256(src.read_bytes()).hexdigest()
+    if sha256_before != sha256_after:
+        return {**base, "status": "error",
+                "error": f"Integrity check failed: input document '{src}' was altered during remediation!"}
 
     base["reaudit"] = after
     base["status"] = "pass" if after["summary"]["pass"] else "fail"
