@@ -66,7 +66,11 @@ def _drawing_alt(drawing_el):
     for docPr in drawing_el.iter(qn("wp:docPr")):
         descr = (docPr.get("descr") or "").strip()
         title = (docPr.get("title") or "").strip()
-        return (bool(descr or title), descr, title)
+        is_decorative = any(
+            elem.tag.endswith("decorative") and elem.get("val") == "1"
+            for elem in docPr.iter()
+        )
+        return (bool(descr or title or is_decorative), descr, title)
     return (False, "", "")
 
 
