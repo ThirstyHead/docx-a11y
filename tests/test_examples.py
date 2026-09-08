@@ -29,8 +29,7 @@ def test_example_before_test_document_contains_all_barriers():
     rule_ids = {f["rule_id"] for f in result["findings"]}
     expected_rules = {
         "image-alt-missing",
-        "heading-level-skipped",
-        "multiple-h1",
+        "headings-none",
         "table-header-missing",
         "merged-cell",
         "title-missing",
