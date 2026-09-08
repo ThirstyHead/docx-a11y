@@ -15,7 +15,7 @@ from typing import List, Optional
 
 from docx.oxml.ns import qn
 
-from .contrast import contrast_ratio, hex_to_rgb
+from .contrast import adjust_color_for_contrast, contrast_ratio, hex_to_rgb
 from .findings import Finding
 
 HEADING_RE = re.compile(r"^Heading (\d)$")
@@ -37,6 +37,7 @@ class AuditContext:
     # explicit heading map for deterministic structure assignment:
     # {paragraph_index: "Heading 1"} — overrides heuristics entirely when set.
     heading_map: dict = field(default_factory=dict)
+    auto_promote_headings: bool = False
 
 
 def _para_text(p) -> str:
@@ -246,12 +247,46 @@ class HeadingsNone:
                         "or apply native heading styles in Word.")]
 
     def fix(self, doc, finding, ctx):
-        if not ctx.heading_map:
+        if ctx.heading_map:
+            for idx_str, style in sorted(ctx.heading_map.items(), key=lambda kv: int(kv[0])):
+                idx = int(idx_str)
+                doc.paragraphs[idx].style = doc.styles[style]
+            return True
+
+        if not getattr(ctx, "auto_promote_headings", False):
             return False
-        for idx_str, style in sorted(ctx.heading_map.items(), key=lambda kv: int(kv[0])):
-            idx = int(idx_str)
-            doc.paragraphs[idx].style = doc.styles[style]
-        return True
+
+        # Heuristic auto-promotion of visual pseudo-headings
+        promoted = 0
+        h1_assigned = False
+        for p in doc.paragraphs:
+            text = _para_text(p).strip()
+            if not text:
+                continue
+            is_large = False
+            is_bold = False
+            for r in p.runs:
+                size = _effective_font_size_pt(r)
+                if size is not None and size >= 14.0:
+                    is_large = True
+                if r.font.bold:
+                    is_bold = True
+            if is_large or is_bold:
+                if not h1_assigned:
+                    p.style = doc.styles["Heading 1"]
+                    h1_assigned = True
+                    promoted += 1
+                else:
+                    p.style = doc.styles["Heading 2"]
+                    promoted += 1
+
+        if promoted == 0:
+            for p in doc.paragraphs:
+                if _para_text(p).strip():
+                    p.style = doc.styles["Heading 1"]
+                    promoted += 1
+                    break
+        return promoted > 0
 
 
 class MultipleH1:
@@ -352,6 +387,10 @@ class TableHeaderMissing:
             th = OxmlElement("w:tblHeader")
             th.set(qn("w:val"), "true")
             trPr.append(th)
+        if trPr.find(qn("w:cantSplit")) is None:
+            from docx.oxml import OxmlElement
+            cs = OxmlElement("w:cantSplit")
+            trPr.append(cs)
         return True
 
 
@@ -419,19 +458,23 @@ class ColorContrast:
         i = int(finding.location.split("[")[1].split("]")[0])
         p = doc.paragraphs[i]
         fixed = 0
+        bg_hex = ctx.background_rgb
         for r in p.runs:
             rgb = _run_color_rgb(r)
             if rgb is None:
                 continue
             fg = hex_to_rgb(rgb)
-            bg = hex_to_rgb(ctx.background_rgb)
+            bg = hex_to_rgb(bg_hex)
             if fg is None or bg is None:
                 continue
-            if contrast_ratio(fg, bg) < (3.0 if _is_large_text(_effective_font_size_pt(r), bool(r.font.bold)) else 4.5):
+            size_pt = _effective_font_size_pt(r) or 11.0
+            target_ratio = 3.0 if _is_large_text(size_pt, bool(r.font.bold)) else 4.5
+            if contrast_ratio(fg, bg) < target_ratio:
                 rpr = r._r.find(qn("w:rPr"))
                 col = rpr.find(qn("w:color")) if rpr is not None else None
                 if col is not None:
-                    rpr.remove(col)
+                    adjusted_hex = adjust_color_for_contrast(rgb, bg_hex, target_ratio=target_ratio)
+                    col.set(qn("w:val"), adjusted_hex)
                     fixed += 1
         return fixed > 0
 
@@ -447,5 +490,66 @@ RULES = [
     MergedCell(),
     ColorContrast(),
 ]
+
+
+def unmerge_table_cells(table) -> int:
+    """Unmerge all horizontally or vertically merged cells in table.
+
+    Returns count of unmerged cell attributes modified.
+    """
+    count = 0
+    for row in table._tbl.findall(qn("w:tr")):
+        for tc in row.findall(qn("w:tc")):
+            tcPr = tc.find(qn("w:tcPr"))
+            if tcPr is None:
+                continue
+            gridSpan = tcPr.find(qn("w:gridSpan"))
+            if gridSpan is not None:
+                tcPr.remove(gridSpan)
+                count += 1
+            vMerge = tcPr.find(qn("w:vMerge"))
+            if vMerge is not None:
+                tcPr.remove(vMerge)
+                count += 1
+    return count
+
+
+def normalize_document_headings(doc) -> int:
+    """Normalize heading structure: keep first Heading 1, demote extra H1s to Heading 2,
+    and eliminate skipped heading levels.
+
+    Returns count of normalized headings.
+    """
+    modified = 0
+    h1_found = False
+    prev_level = None
+
+    for p in doc.paragraphs:
+        if p.style is None:
+            continue
+        m = HEADING_RE.fullmatch(p.style.name or "")
+        if not m:
+            continue
+        level = int(m.group(1))
+
+        if level == 1:
+            if not h1_found:
+                h1_found = True
+                prev_level = 1
+            else:
+                p.style = doc.styles["Heading 2"]
+                prev_level = 2
+                modified += 1
+            continue
+
+        if prev_level is not None and level - prev_level > 1:
+            new_level = prev_level + 1
+            p.style = doc.styles[f"Heading {new_level}"]
+            prev_level = new_level
+            modified += 1
+        else:
+            prev_level = level
+
+    return modified
 
 RULES_BY_ID = {r.rule_id: r for r in RULES}
