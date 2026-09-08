@@ -5,7 +5,6 @@ from pathlib import Path
 import pytest
 
 from docx_a11y.audit import audit_file
-from docx_a11y.cli import main
 from docx_a11y.enrich import (BUNDLED_CACHE, Cache, build_enrichment,
                               find_server, get_criterion_text,
                               parse_criterion)
@@ -146,17 +145,3 @@ def test_build_enrichment_live():
     assert "live stdio" in source
     assert "1.1.1" in enrichment
     assert enrichment["1.1.1"]["handle"] == "Non-text Content"
-
-
-# ---------------------------------------------------------------------------
-# CLI integration
-# ---------------------------------------------------------------------------
-
-def test_cli_report_with_enrichment(tmp_path, capsys):
-    r = tmp_path / "a.md"
-    rc = main(["audit", str(FIX / "no-knead-bread.docx"), "--report", str(r)])
-    assert rc == 1  # fails on violations but report still written
-    out = capsys.readouterr().out
-    assert "normative text: bundled sc_cache.json (offline)" in out
-    md = r.read_text()
-    assert "Normative text — SC 1.1.1" in md

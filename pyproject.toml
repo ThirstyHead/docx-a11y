@@ -7,7 +7,7 @@ name = "docx-a11y"
 version = "0.1.0"
 description = "Audit and remediate Word .docx files against WCAG 2.1 AA (standalone, no AI required)"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "docx-a11y contributors" }]
 keywords = ["accessibility", "wcag", "docx", "word", "ooxml", "audit", "remediation"]
