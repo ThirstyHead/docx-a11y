@@ -67,3 +67,49 @@ def test_markdown_remediation_progress():
     assert "Resolved **2** of **2** blocking accessibility barriers" in md
     assert "100.0% improvement" in md
     assert "1111222233334444" in md
+
+
+def test_word_assistant_discrepancy_notes():
+    audit_data = {
+        "file": "test-sample.docx",
+        "audited_at": "2026-09-08T12:00:00Z",
+        "sha256": "abcdef123456",
+        "summary": {"total": 3, "blocking": 2, "pass": False},
+        "findings": [
+            {
+                "rule_id": "headings-none",
+                "sc": "1.3.1",
+                "severity": "serious",
+                "location": "document body",
+                "description": "No headings.",
+                "evidence": "0 headings",
+                "fixable": False,
+                "fix": "Add headings.",
+            },
+            {
+                "rule_id": "table-header-missing",
+                "sc": "1.3.1",
+                "severity": "serious",
+                "location": "table[0]",
+                "description": "Missing header.",
+                "evidence": "0 tblHeader",
+                "fixable": True,
+                "fix": "Add tblHeader.",
+            },
+            {
+                "rule_id": "merged-cell",
+                "sc": "1.3.1",
+                "severity": "moderate",
+                "location": "table[0] row[1] cell[0]",
+                "description": "Merged cell.",
+                "evidence": "vMerge",
+                "fixable": False,
+                "fix": "Unmerge.",
+            },
+        ],
+    }
+    md = render_md(audit_data)
+    assert "- **Word Accessibility Assistant Note:** Microsoft Word's built-in Accessibility Assistant suppresses the 'No headings in document' warning" in md
+    assert "- **Word Accessibility Assistant Note:** Microsoft Word's built-in Accessibility Assistant primarily inspects table header repetition across page breaks" in md
+    assert "- **Word Accessibility Assistant Note:** Microsoft Word's built-in Accessibility Assistant checks for split cells or nested tables but routinely overlooks" in md
+

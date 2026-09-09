@@ -4,13 +4,29 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "docx-a11y"
-version = "0.1.0"
-description = "Audit and remediate Word .docx files against WCAG 2.1 AA (standalone, no AI required)"
+version = "0.4.0"
+description = "Audit and remediate Microsoft Word .docx files against WCAG 2.1 AA (headless, deterministic)"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "docx-a11y contributors" }]
-keywords = ["accessibility", "wcag", "docx", "word", "ooxml", "audit", "remediation"]
+keywords = ["accessibility", "wcag", "wcag21", "word", "docx", "ooxml", "audit", "remediation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Text Processing :: Markup",
+    "Topic :: Scientific/Engineering :: Human Machine Interfaces",
+]
 dependencies = [
     "python-docx-ng>=2.1,<3",
     "wcag-contrast-ratio>=0.9,<1",
@@ -36,6 +52,11 @@ all = [
 [project.scripts]
 docx-a11y = "docx_a11y.cli:main"
 docx-a11y-gui = "docx_a11y.gui.app:main"
+
+[project.urls]
+Homepage = "https://github.com/ThirstyHead/docx-a11y"
+Repository = "https://github.com/ThirstyHead/docx-a11y.git"
+Issues = "https://github.com/ThirstyHead/docx-a11y/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
