@@ -28,6 +28,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Human Machine Interfaces",
 ]
 dependencies = [
+    "engine-a11y>=0.1.0",
     "python-docx-ng>=2.1,<3",
     "wcag-contrast-ratio>=0.9,<1",
     "markdown>=3.6,<4",
