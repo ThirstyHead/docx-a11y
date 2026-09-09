@@ -17,11 +17,30 @@ mkdir -p "${APP_DIR}/usr/bin" \
          "${APP_DIR}/usr/share/icons/hicolor/256x256/apps" \
          "${APP_DIR}/usr/lib"
 
+echo "==> Building PyInstaller bundle..."
+PYINSTALLER_BIN="${REPO_ROOT}/.venv/bin/pyinstaller"
+if [ ! -x "${PYINSTALLER_BIN}" ]; then
+  PYINSTALLER_BIN="$(command -v pyinstaller || true)"
+fi
+if [ -z "${PYINSTALLER_BIN}" ]; then
+  echo "Error: pyinstaller executable not found."
+  exit 1
+fi
+
+"${PYINSTALLER_BIN}" --noconfirm --clean "${REPO_ROOT}/packaging/specs/${APP_NAME}-gui.spec"
+
 echo "==> Staging Linux AppDir files..."
 cp -r "${DIST_DIR}/docx-a11y-gui"/* "${APP_DIR}/usr/bin/"
 
-# Ensure main launcher symlink
-ln -sf "docx-a11y" "${APP_DIR}/AppRun"
+# Ensure main launcher AppRun script
+cat << EOF > "${APP_DIR}/AppRun"
+#!/bin/sh
+SELF=\$(readlink -f "\$0")
+HERE=\${SELF%/*}
+export PATH="\${HERE}/usr/bin:\${PATH}"
+export LD_LIBRARY_PATH="\${HERE}/usr/bin:\${LD_LIBRARY_PATH:-}"
+exec "\${HERE}/usr/bin/${APP_NAME}" "\$@"
+EOF
 chmod +x "${APP_DIR}/AppRun"
 
 # Copy icons
