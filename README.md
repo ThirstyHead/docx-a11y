@@ -23,51 +23,71 @@ Part of the document accessibility trio alongside [pptx-a11y](https://github.com
 
 ---
 
-## Installation & Launch (macOS, Windows, Linux)
+## Installation
 
-Running `docx-a11y` via a Python virtual environment is the **primary, recommended path** for all platforms. It works identically on macOS (Apple Silicon & Intel), Windows, and Linux, providing instant access to both the desktop GUI and the headless CLI without requiring Apple Developer certificates, Windows SmartScreen bypasses, or administrative privileges.
+### 1. Desktop GUI Application (Pre-built Installers)
+
+Pre-built desktop installers with bundled dependencies (including PySide6/Qt) are available on the [GitHub Releases](https://github.com/ThirstyHead/docx-a11y/releases) page:
+
+- **macOS (`.dmg`)**:
+  1. Download `docx-a11y-v<version>-macos.dmg` (e.g. `docx-a11y-v0.5.0-macos.dmg`).
+  2. Double-click to mount the disk image.
+  3. Drag `docx-a11y.app` into `/Applications`.
+  4. Launch `docx-a11y` from Spotlight, Launchpad, or the Applications folder.
+  > **Note (macOS Gatekeeper)**: Because `docx-a11y` is an open-source binary distributed outside the Mac App Store without paid Apple Developer notarization, macOS blocks first launch with *“Apple could not verify docx-a11y is free of malware”*.
+  > - **GUI bypass**: Right-click (or Control-click) `docx-a11y.app` in `/Applications`, select **Open**, and click **Open**. Alternatively, go to **System Settings > Privacy & Security**, scroll down to the **Security** section, and click **Open Anyway**.
+  > - **Terminal bypass**: Run `xattr -cr /Applications/docx-a11y.app` (or `xattr -d com.apple.quarantine ~/Downloads/docx-a11y-*-macos.dmg` before opening the DMG).
+- **Windows (`.exe`)**:
+  1. Download `docx-a11y-setup-v<version>.exe` (e.g. `docx-a11y-setup-v0.5.0.exe`).
+  2. Run the installer wizard to install into `Program Files` and create Start Menu / Desktop shortcuts.
+- **Linux (`.AppImage`)**:
+  1. Download `docx-a11y-v<version>-x86_64.AppImage` (e.g. `docx-a11y-v0.5.0-x86_64.AppImage`).
+  2. Make it executable: `chmod +x docx-a11y-v*-x86_64.AppImage`.
+  3. Run directly: `./docx-a11y-v*-x86_64.AppImage`.
+
+### 2. Standalone Headless CLI Binary (No Python Required)
+
+Single-file headless CLI executables are available on [GitHub Releases](https://github.com/ThirstyHead/docx-a11y/releases) for agentic workflows, CI/CD pipelines, and terminal environments:
+
+```bash
+# Example: Download macOS Apple Silicon standalone CLI binary
+curl -LO https://github.com/ThirstyHead/docx-a11y/releases/latest/download/docx-a11y-cli-macos-arm64
+chmod +x docx-a11y-cli-macos-arm64
+sudo mv docx-a11y-cli-macos-arm64 /usr/local/bin/docx-a11y
+
+# Verify installation
+docx-a11y --help
+```
+
+### 3. Ephemeral Execution via `uvx`
+
+Run `docx-a11y` instantly in any environment without managing Python virtual environments:
+
+```bash
+# Run headless CLI audit & remediation
+uvx docx-a11y document.docx --fix --format md,html,pdf,json
+
+# Launch desktop GUI ephemerally
+uvx --with "docx-a11y[gui]" docx-a11y-gui
+```
+
+### 4. Python Package via `pip` or `venv`
 
 Requires **Python >= 3.10**.
 
-### Primary Path: Python Virtual Environment (`venv`)
-
-#### On macOS & Linux:
+#### Development Virtual Environment (`venv`)
 
 ```bash
-# 1. Clone and enter the repository
+# Clone and enter repository
 git clone https://github.com/ThirstyHead/docx-a11y.git
 cd docx-a11y
 
-# 2. Create and activate a virtual environment
+# Create and activate virtual environment
 python3 -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate  # On Windows: .venv\Scripts\Activate.ps1
 
-# 3. Install the application with GUI support
-# Note: Always include quotes around ".[gui]" to prevent zsh/bash globbing
-pip install -e ".[gui]"
-
-# 4. Launch the Desktop GUI
-docx-a11y-gui
-```
-
-#### On Windows (PowerShell):
-
-```powershell
-# 1. Clone and enter the repository
-git clone https://github.com/ThirstyHead/docx-a11y.git
-cd docx-a11y
-
-# 2. Create and activate a virtual environment
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-
-# 3. Install the application with GUI support
-pip install -e ".[gui]"
-
-# 4. Launch the Desktop GUI
-docx-a11y-gui
-```
-
+# Install with all dependencies
+pip install -e ".[all]"
 > **Important Installation Tips:**
 > - **Execute from the repository root:** Ensure your working directory is `docx-a11y/` where `pyproject.toml` lives.
 > - **Quote the extras string (`".[gui]"`):** In macOS `zsh`, unquoted brackets `docx-a11y[gui]` or `.[gui]` are interpreted as shell globbing patterns. Always wrap the target in double quotes (`".[gui]"`).
