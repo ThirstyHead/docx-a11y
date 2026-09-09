@@ -79,6 +79,35 @@ RULE_BARRIER_EXPLANATIONS = {
     ),
 }
 
+# Educational notes detailing why Microsoft Word's built-in Accessibility Assistant
+# produces false passes on issues that violate strict WCAG 2.1 AA standards.
+WORD_ASSISTANT_NOTES = {
+    "headings-none": (
+        "Microsoft Word's built-in Accessibility Assistant suppresses the 'No headings in document' warning "
+        "on shorter documents, triggering only when length exceeds a high threshold (typically 10+ pages or 2,000+ words) "
+        "to avoid alerting on single-page memos or short flyers. Under WCAG 2.1 SC 1.3.1, however, structural headings "
+        "are required for any multi-paragraph document regardless of page count to allow assistive technologies "
+        "to navigate by section."
+    ),
+    "table-header-missing": (
+        "Microsoft Word's built-in Accessibility Assistant primarily inspects table header repetition across page breaks "
+        "(checking 'Repeat as header row at the top of each page'), frequently treating single-page tables as layout tables "
+        "and passing them silently. Under WCAG 2.1 SC 1.3.1, every data table requires a programmatic header row "
+        "(w:tblHeader) so assistive technologies can announce column identities as users navigate data cells."
+    ),
+    "merged-cell": (
+        "Microsoft Word's built-in Accessibility Assistant checks for split cells or nested tables but routinely overlooks "
+        "vertical cell merges (w:vMerge) because the underlying OpenXML table grid maintains a uniform cell count per row element. "
+        "Regardless of whether Word warns, merged cells break the expected two-dimensional coordinate system in screen readers "
+        "and violate WCAG 2.1 SC 1.3.1 for tabular data."
+    ),
+    "heading-level-skipped": (
+        "Microsoft Word's built-in Accessibility Assistant only checks whether heading styles are present; "
+        "it does not validate heading hierarchy continuity. Under WCAG 2.1 SC 1.3.1, skipping heading levels "
+        "(such as Heading 1 directly to Heading 3) breaks the structural outline for assistive technology users."
+    ),
+}
+
 # Prohibited medical-model and condescending phrases
 BANNED_PHRASES = [
     "suffer from",

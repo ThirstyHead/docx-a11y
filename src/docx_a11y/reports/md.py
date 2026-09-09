@@ -2,7 +2,7 @@
 from typing import Any, Dict, List, Optional
 from .meta import PRINCIPLES, POUR_INTROS, SC_META, W3C_QUICKREF
 from .stats import compute_progress_stats
-from .tone import RULE_BARRIER_EXPLANATIONS, WHO_MAP, assert_social_model_language
+from .tone import RULE_BARRIER_EXPLANATIONS, WHO_MAP, WORD_ASSISTANT_NOTES, assert_social_model_language
 from .. import __version__
 
 
@@ -88,6 +88,10 @@ def render_md(
             lines.append(f"- **Recommended Remediation:** {f.get('fix', 'Inspect and resolve.')}")
             lines.append(f"- **Who Benefits:** {WHO_MAP.get(sc, 'All readers gain improved access.')}")
             lines.append(f"- **Technical Evidence:** `{f.get('evidence', '')}`")
+
+            note = WORD_ASSISTANT_NOTES.get(rule_id)
+            if note:
+                lines.append(f"- **Word Accessibility Assistant Note:** {note}")
 
             why_unfixable = f.get("why_unfixable")
             if why_unfixable:
