@@ -2,6 +2,7 @@
 import sys
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_data_files
+from engine_a11y.packaging.specs import COMMON_HIDDEN_IMPORTS, COMMON_EXCLUDES
 
 block_cipher = None
 
@@ -10,24 +11,28 @@ SPEC_ROOT = Path(SPECPATH)
 REPO_ROOT = SPEC_ROOT.parent.parent
 
 datas = collect_data_files('docx_a11y') + collect_data_files('engine_a11y')
-hiddenimports = [
-    'engine_a11y',
-    'engine_a11y.criteria_config',
-    'engine_a11y.findings',
-    'docx',
-    'fitz',
-    'pikepdf',
-    'wcag_contrast_ratio',
-]
+hiddenimports = sorted(list(set(
+    COMMON_HIDDEN_IMPORTS
+    + [
+        'docx',
+        'fitz',
+        'pikepdf',
+        'wcag_contrast_ratio',
+    ]
+)))
 
-excludes = [
-    'PySide6',
-    'shiboken6',
-    'tkinter',
-    'unittest',
-    'matplotlib',
-    'scipy',
-]
+excludes = sorted(list(set(
+    COMMON_EXCLUDES
+    + [
+        'PySide6',
+        'PySide6.QtCore',
+        'PySide6.QtGui',
+        'PySide6.QtWidgets',
+        'shiboken6',
+        'docx_a11y.gui',
+        'engine_a11y.gui',
+    ]
+)))
 
 a = Analysis(
     [str(REPO_ROOT / 'packaging' / 'entrypoints' / 'cli_main.py')],

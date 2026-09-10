@@ -56,3 +56,11 @@ def test_icons_generated():
     assert (icons_dir / "docx-a11y.png").exists()
     assert (icons_dir / "docx-a11y.ico").exists()
     assert (icons_dir / "docx-a11y.icns").exists()
+
+
+def test_packaging_uses_shared_engine():
+    gen_script = (REPO_ROOT / "packaging" / "scripts" / "generate_icons.py").read_text(encoding="utf-8")
+    assert "engine_a11y.packaging.icons" in gen_script
+    gui_spec = (REPO_ROOT / "packaging" / "specs" / "docx-a11y-gui.spec").read_text(encoding="utf-8")
+    assert "engine_a11y.packaging.specs" in gui_spec
+
