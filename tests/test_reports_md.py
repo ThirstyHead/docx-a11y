@@ -67,6 +67,8 @@ def test_markdown_remediation_progress():
     assert "Resolved **2** of **2** blocking accessibility barriers" in md
     assert "100.0% improvement" in md
     assert "1111222233334444" in md
+    assert "Document Remediation Scorecard" in md
+    assert "Remediation Improvement" in md
 
 
 def test_word_assistant_discrepancy_notes():
