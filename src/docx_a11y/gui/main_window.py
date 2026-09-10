@@ -1,11 +1,15 @@
-"""Main dashboard window for docx-a11y desktop application."""
+"""Main dashboard window for docx-a11y desktop application with Before/After storytelling."""
+import os
 from pathlib import Path
 from typing import List, Optional
-from PySide6.QtGui import QDragEnterEvent, QDropEvent
+
+from PySide6.QtCore import Qt, QUrl, Signal
+from PySide6.QtGui import QDesktopServices, QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFileDialog,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -15,24 +19,33 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QSplitter,
     QTableWidget,
     QTableWidgetItem,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
+from engine_a11y.gui import ReportViewerDialog
+from engine_a11y.gui.theme import APP_STYLESHEET
+
 from ..audit import audit_file
 from ..reports.theme import available_themes
 from .models import BatchItem, BatchQueue
-from .theme import APP_STYLESHEET
 from .triage_dialog import TriageDialog
 from .worker import BatchWorker
 
 
 class MainWindow(QMainWindow):
+    """Main dashboard featuring Before/After storytelling remediation for Word documents."""
+
+    worker_completed_signal = Signal(int, int)
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("docx-a11y: Word WCAG Accessibility Remediation")
-        self.resize(960, 680)
+        self.resize(1080, 720)
         self.setStyleSheet(APP_STYLESHEET)
         self.setAcceptDrops(True)
 
@@ -45,51 +58,164 @@ class MainWindow(QMainWindow):
         central_widget = QWidget(self)
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
-        main_layout.setSpacing(12)
-        main_layout.setContentsMargins(16, 16, 16, 16)
+        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(14, 14, 14, 14)
 
-        # 1. Top Action Toolbar
-        toolbar_layout = QHBoxLayout()
-        self.btn_add_folder = QPushButton("📁 Add Folder...")
-        self.btn_add_folder.clicked.connect(self.select_folder)
+        # 1. Non-Technical Guide Banner
+        self.guide_banner = QLabel(
+            "💡 <b>How it works:</b> "
+            "1. Add Word documents on the left (<b>Before</b>)  ➔  "
+            "2. Click <b>Fix & Audit</b> in the center  ➔  "
+            "3. Open your remediated documents and reports on the right (<b>After</b>). "
+            "<i>Your original files are safe and never modified.</i>"
+        )
+        self.guide_banner.setObjectName("guide_banner")
+        self.guide_banner.setWordWrap(True)
+        main_layout.addWidget(self.guide_banner)
 
+        # 2. Main Splitter: Before (Left) vs After (Right)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setChildrenCollapsible(False)
+
+        # --- LEFT PANE: Before ---
+        self.pane_before = QGroupBox("1. Before: Original Documents")
+        self.pane_before.setObjectName("pane_before")
+        before_layout = QVBoxLayout(self.pane_before)
+        before_layout.setSpacing(8)
+
+        before_sub = QLabel("Select Word (.docx) documents needing accessibility remediation. Original files remain safe and unmodified.")
+        before_sub.setObjectName("pane_subtitle")
+        before_sub.setWordWrap(True)
+        before_layout.addWidget(before_sub)
+
+        # Left Toolbar
+        tb_layout = QHBoxLayout()
         self.btn_add_files = QPushButton("📄 Add Files...")
         self.btn_add_files.clicked.connect(self.select_files)
-
-        self.btn_clear = QPushButton("🗑️ Clear List")
+        self.btn_add_folder = QPushButton("📁 Add Folder...")
+        self.btn_add_folder.clicked.connect(self.select_folder)
+        self.btn_clear = QPushButton("🗑️ Clear")
         self.btn_clear.clicked.connect(self.clear_files)
-
-        self.btn_triage = QPushButton("🔍 Interactive Triage")
+        self.btn_triage = QPushButton("🔍 Triage")
         self.btn_triage.clicked.connect(self.open_triage)
 
-        toolbar_layout.addWidget(self.btn_add_folder)
-        toolbar_layout.addWidget(self.btn_add_files)
-        toolbar_layout.addWidget(self.btn_clear)
-        toolbar_layout.addWidget(self.btn_triage)
-        toolbar_layout.addStretch()
+        tb_layout.addWidget(self.btn_add_files)
+        tb_layout.addWidget(self.btn_add_folder)
+        tb_layout.addWidget(self.btn_clear)
+        tb_layout.addWidget(self.btn_triage)
+        before_layout.addLayout(tb_layout)
 
-        main_layout.addLayout(toolbar_layout)
+        # Before Table
+        self.table_before = QTableWidget(0, 5)
+        self.table_before.setHorizontalHeaderLabels(["File Name", "Paragraphs", "Status", "Findings", "Score"])
+        h_header = self.table_before.horizontalHeader()
+        h_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        h_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        h_header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        h_header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        h_header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        self.table_before.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table_before.setAlternatingRowColors(True)
+        before_layout.addWidget(self.table_before, stretch=1)
 
-        # 2. Batch Queue Table
-        self.table = QTableWidget(0, 5)
-        self.table.setHorizontalHeaderLabels(["File Name", "Paragraphs", "Status", "Findings", "Score"])
-        header = self.table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setAlternatingRowColors(True)
+        # Backward compatibility alias
+        self.table = self.table_before
 
-        main_layout.addWidget(self.table, stretch=1)
+        splitter.addWidget(self.pane_before)
+
+        # --- CENTER BRIDGE: Fix & Audit Flow ---
+        self.center_bridge = QFrame()
+        self.center_bridge.setObjectName("center_bridge")
+        self.center_bridge.setFixedWidth(190)
+        bridge_layout = QVBoxLayout(self.center_bridge)
+        bridge_layout.setContentsMargins(10, 20, 10, 20)
+        bridge_layout.setSpacing(12)
+        bridge_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        arrow_label = QLabel("➔")
+        arrow_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        arrow_label.setStyleSheet("font-size: 26px; color: #64748b; font-weight: bold;")
+        bridge_layout.addWidget(arrow_label)
+
+        self.btn_remediate_bridge = QPushButton("✨ Fix & Audit ➔")
+        self.btn_remediate_bridge.setObjectName("btn_remediate_primary")
+        self.btn_remediate_bridge.setEnabled(False)
+        self.btn_remediate_bridge.clicked.connect(self.start_processing)
+        bridge_layout.addWidget(self.btn_remediate_bridge)
+
+        # Backward compatibility alias
+        self.btn_start = self.btn_remediate_bridge
+
+        self.btn_stop = QPushButton("Cancel")
+        self.btn_stop.setEnabled(False)
+        self.btn_stop.clicked.connect(self.stop_processing)
+        bridge_layout.addWidget(self.btn_stop)
+
+        self.chk_autofix = QCheckBox("Auto-fix barriers")
+        self.chk_autofix.setChecked(True)
+        self.chk_autofix.toggled.connect(self._update_start_button_text)
+        bridge_layout.addWidget(self.chk_autofix)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(True)
+        bridge_layout.addWidget(self.progress_bar)
+
+        self.lbl_status = QLabel("Ready")
+        self.lbl_status.setWordWrap(True)
+        self.lbl_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_status.setStyleSheet("font-size: 11px; color: #475569;")
+        bridge_layout.addWidget(self.lbl_status)
+
+        bridge_layout.addStretch()
+        splitter.addWidget(self.center_bridge)
+
+        # --- RIGHT PANE: After ---
+        self.pane_after = QGroupBox("2. After: Remediated Files & Reports")
+        self.pane_after.setObjectName("pane_after")
+        after_layout = QVBoxLayout(self.pane_after)
+        after_layout.setSpacing(8)
+
+        after_sub = QLabel("Remediated documents and audit reports are saved to your output folder. Double-click any item to open.")
+        after_sub.setObjectName("pane_subtitle")
+        after_sub.setWordWrap(True)
+        after_layout.addWidget(after_sub)
+
+        # After Tree
+        self.tree_after = QTreeWidget()
+        self.tree_after.setHeaderLabels(["Generated Item", "Details"])
+        tree_header = self.tree_after.header()
+        tree_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        tree_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.tree_after.setAlternatingRowColors(True)
+        self.tree_after.itemDoubleClicked.connect(self._on_after_item_double_clicked)
+        after_layout.addWidget(self.tree_after, stretch=1)
+
+        # After Action Toolbar
+        after_btn_layout = QHBoxLayout()
+        self.btn_open_output_folder = QPushButton("📂 Open Output Folder")
+        self.btn_open_output_folder.clicked.connect(self.open_output_folder)
+
+        self.btn_view_report = QPushButton("🔍 View Report In-App")
+        self.btn_view_report.clicked.connect(self.view_selected_report)
+
+        after_btn_layout.addWidget(self.btn_open_output_folder)
+        after_btn_layout.addWidget(self.btn_view_report)
+        after_btn_layout.addStretch()
+        after_layout.addLayout(after_btn_layout)
+
+        splitter.addWidget(self.pane_after)
+        splitter.setStretchFactor(0, 4)
+        splitter.setStretchFactor(1, 0)
+        splitter.setStretchFactor(2, 4)
+
+        main_layout.addWidget(splitter, stretch=1)
 
         # 3. Settings Box
         settings_group = QGroupBox("Configuration & Output Settings")
         settings_layout = QVBoxLayout(settings_group)
-        settings_layout.setSpacing(10)
+        settings_layout.setSpacing(8)
 
-        # Output directory selector
         out_dir_layout = QHBoxLayout()
         out_dir_layout.addWidget(QLabel("Output Directory:"))
         docs_dir = Path.home() / "Documents"
@@ -101,18 +227,15 @@ class MainWindow(QMainWindow):
         out_dir_layout.addWidget(self.btn_browse_out)
         settings_layout.addLayout(out_dir_layout)
 
-        # Options row: formats, theme, auto-fix
         options_layout = QHBoxLayout()
-
-        # Format checkboxes
-        options_layout.addWidget(QLabel("Formats:"))
-        self.chk_md = QCheckBox("Markdown")
+        options_layout.addWidget(QLabel("Report Formats:"))
+        self.chk_md = QCheckBox("Markdown (.md)")
         self.chk_md.setChecked(True)
-        self.chk_html = QCheckBox("HTML")
+        self.chk_html = QCheckBox("HTML (.html)")
         self.chk_html.setChecked(True)
-        self.chk_pdf = QCheckBox("PDF")
+        self.chk_pdf = QCheckBox("PDF (.pdf)")
         self.chk_pdf.setChecked(True)
-        self.chk_json = QCheckBox("JSON")
+        self.chk_json = QCheckBox("JSON (.json)")
         self.chk_json.setChecked(True)
 
         options_layout.addWidget(self.chk_md)
@@ -121,47 +244,16 @@ class MainWindow(QMainWindow):
         options_layout.addWidget(self.chk_json)
         options_layout.addSpacing(20)
 
-        # Theme dropdown
         options_layout.addWidget(QLabel("Theme:"))
         self.cmb_theme = QComboBox()
         for t in available_themes():
             self.cmb_theme.addItem(t["name"])
         self.cmb_theme.setCurrentText("ocean")
         options_layout.addWidget(self.cmb_theme)
-        options_layout.addSpacing(20)
-
-        # Auto-fix checkbox
-        self.chk_autofix = QCheckBox("Apply Deterministic Auto-Fixes")
-        self.chk_autofix.setChecked(True)
-        self.chk_autofix.toggled.connect(self._update_start_button_text)
-        options_layout.addWidget(self.chk_autofix)
-
         options_layout.addStretch()
+
         settings_layout.addLayout(options_layout)
-
         main_layout.addWidget(settings_group)
-
-        # 4. Progress and Execution Bar
-        progress_layout = QHBoxLayout()
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setValue(0)
-        self.lbl_status = QLabel("Ready. Add Word documents or folders to begin.")
-
-        self.btn_start = QPushButton("Start Remediation")
-        self.btn_start.setObjectName("btn_primary")
-        self.btn_start.setEnabled(False)
-        self.btn_start.clicked.connect(self.start_processing)
-
-        self.btn_stop = QPushButton("Cancel")
-        self.btn_stop.setEnabled(False)
-        self.btn_stop.clicked.connect(self.stop_processing)
-
-        progress_layout.addWidget(self.btn_start)
-        progress_layout.addWidget(self.btn_stop)
-        progress_layout.addWidget(self.progress_bar, stretch=1)
-
-        main_layout.addLayout(progress_layout)
-        main_layout.addWidget(self.lbl_status)
 
     # Drag and Drop handlers
     def dragEnterEvent(self, event: QDragEnterEvent):
@@ -203,6 +295,7 @@ class MainWindow(QMainWindow):
     def clear_files(self):
         self.queue.clear()
         self._refresh_table()
+        self.tree_after.clear()
         self.lbl_status.setText("Queue cleared.")
 
     def browse_output_dir(self):
@@ -226,22 +319,22 @@ class MainWindow(QMainWindow):
         self.lbl_status.setText(f"Triage session finished for {item.path.name}.")
 
     def _refresh_table(self):
-        self.table.setRowCount(len(self.queue.items))
+        self.table_before.setRowCount(len(self.queue.items))
         for row, item in enumerate(self.queue.items):
-            self.table.setItem(row, 0, QTableWidgetItem(item.path.name))
-            self.table.setItem(row, 1, QTableWidgetItem(str(item.paragraph_count) if item.paragraph_count else "-"))
-            self.table.setItem(row, 2, QTableWidgetItem(item.status))
-            self.table.setItem(row, 3, QTableWidgetItem(str(item.findings_count) if item.findings_count else "-"))
-            self.table.setItem(row, 4, QTableWidgetItem(f"{item.score:.1f}%" if item.score is not None else "-"))
+            self.table_before.setItem(row, 0, QTableWidgetItem(item.path.name))
+            self.table_before.setItem(row, 1, QTableWidgetItem(str(item.paragraph_count) if item.paragraph_count else "-"))
+            self.table_before.setItem(row, 2, QTableWidgetItem(item.status))
+            self.table_before.setItem(row, 3, QTableWidgetItem(str(item.findings_count) if item.findings_count else "-"))
+            self.table_before.setItem(row, 4, QTableWidgetItem(f"{item.score:.1f}%" if item.score is not None else "-"))
 
         has_items = len(self.queue.items) > 0
         self.btn_start.setEnabled(has_items)
 
     def _update_start_button_text(self):
         if self.chk_autofix.isChecked():
-            self.btn_start.setText("Start Remediation")
+            self.btn_remediate_bridge.setText("✨ Fix & Audit ➔")
         else:
-            self.btn_start.setText("Start Audit")
+            self.btn_remediate_bridge.setText("🔍 Audit Only ➔")
 
     def start_processing(self):
         if not self.queue.items:
@@ -308,22 +401,61 @@ class MainWindow(QMainWindow):
 
     def _on_error_occurred(self, idx: int, error_msg: str):
         self.lbl_status.setText(f"Error: {error_msg}")
-        QMessageBox.warning(self, "Processing Issue", error_msg)
+        if os.environ.get("QT_QPA_PLATFORM") != "offscreen":
+            QMessageBox.warning(self, "Processing Issue", error_msg)
 
     def _on_item_started(self, idx: int, total: int, file_name: str):
         self.lbl_status.setText(f"Processing [{idx + 1}/{total}]: {file_name}")
-        self.table.setItem(idx, 2, QTableWidgetItem("Auditing..."))
+        self.table_before.setItem(idx, 2, QTableWidgetItem("Auditing..."))
 
     def _on_item_progress(self, idx: int, step_name: str):
         self.lbl_status.setText(f"[{idx + 1}/{len(self.queue.items)}] {step_name}")
 
     def _on_item_finished(self, idx: int, status: str, findings: int, score: float):
         item = self.queue.items[idx]
-        self.table.setItem(idx, 1, QTableWidgetItem(str(item.paragraph_count)))
-        self.table.setItem(idx, 2, QTableWidgetItem(status))
-        self.table.setItem(idx, 3, QTableWidgetItem(str(findings)))
-        self.table.setItem(idx, 4, QTableWidgetItem(f"{score:.1f}%"))
+        self.table_before.setItem(idx, 1, QTableWidgetItem(str(item.paragraph_count)))
+        self.table_before.setItem(idx, 2, QTableWidgetItem(status))
+        self.table_before.setItem(idx, 3, QTableWidgetItem(str(findings)))
+        self.table_before.setItem(idx, 4, QTableWidgetItem(f"{score:.1f}%"))
         self.progress_bar.setValue(idx + 1)
+        self._populate_after_tree_for_item(item)
+
+    def _populate_after_tree_for_item(self, item: BatchItem):
+        doc_node = QTreeWidgetItem([f"📄 {item.path.name}", f"Score: {item.score:.1f}%" if item.score is not None else item.status])
+        doc_node.setData(0, Qt.ItemDataRole.UserRole, str(item.path))
+
+        out_dir = Path(self.txt_out_dir.text()).expanduser().resolve()
+        stem = item.path.stem
+
+        # Check for fixed docx
+        fixed_docx = out_dir / f"{stem}.fixed.docx"
+        if fixed_docx.exists():
+            fixed_node = QTreeWidgetItem(["✨ Fixed DOCX: " + fixed_docx.name, "Remediated Document"])
+            fixed_node.setData(0, Qt.ItemDataRole.UserRole, str(fixed_docx))
+            doc_node.addChild(fixed_node)
+
+        # Reports
+        md_report = out_dir / f"{stem}-a11y-report.md"
+        if md_report.exists():
+            md_node = QTreeWidgetItem(["📊 Audit Report: " + md_report.name, "Markdown (Double-click to view)"])
+            md_node.setData(0, Qt.ItemDataRole.UserRole, str(md_report))
+            md_node.setData(1, Qt.ItemDataRole.UserRole, item.score)
+            doc_node.addChild(md_node)
+
+        html_report = out_dir / f"{stem}.html"
+        if html_report.exists():
+            html_node = QTreeWidgetItem(["🌐 HTML Report: " + html_report.name, "Web Report"])
+            html_node.setData(0, Qt.ItemDataRole.UserRole, str(html_report))
+            doc_node.addChild(html_node)
+
+        pdf_report = out_dir / f"{stem}-a11y-report.pdf"
+        if pdf_report.exists():
+            pdf_node = QTreeWidgetItem(["📑 PDF Report: " + pdf_report.name, "Printable Report"])
+            pdf_node.setData(0, Qt.ItemDataRole.UserRole, str(pdf_report))
+            doc_node.addChild(pdf_node)
+
+        self.tree_after.addTopLevelItem(doc_node)
+        doc_node.setExpanded(True)
 
     def _on_all_completed(self, processed: int, errors: int):
         self.btn_start.setEnabled(True)
@@ -332,3 +464,53 @@ class MainWindow(QMainWindow):
         self.btn_add_files.setEnabled(True)
         self.btn_clear.setEnabled(True)
         self.lbl_status.setText(f"Completed! Processed {processed} document(s) ({errors} errors).")
+        self.worker_completed_signal.emit(processed, errors)
+
+        if os.environ.get("QT_QPA_PLATFORM") != "offscreen":
+            QMessageBox.information(
+                self,
+                "Batch Complete",
+                f"Processing finished!\nSuccessfully processed: {processed}\n\nRemediated documents and reports are ready in the 'After' pane.",
+            )
+
+    def _on_after_item_double_clicked(self, item: QTreeWidgetItem, column: int):
+        path_str = item.data(0, Qt.ItemDataRole.UserRole)
+        if not path_str:
+            return
+        path = Path(path_str)
+        if not path.exists():
+            return
+
+        if path.suffix.lower() == ".md":
+            score = item.data(1, Qt.ItemDataRole.UserRole)
+            dialog = ReportViewerDialog(report_path=path, score=score, parent=self)
+            dialog.exec()
+        else:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+
+    def open_output_folder(self):
+        out_dir = Path(self.txt_out_dir.text()).expanduser().resolve()
+        if out_dir.exists():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(out_dir)))
+
+    def view_selected_report(self):
+        item = self.tree_after.currentItem()
+        if not item:
+            QMessageBox.information(self, "Select Item", "Please select a report in the After pane to view.")
+            return
+
+        path_str = item.data(0, Qt.ItemDataRole.UserRole)
+        if not path_str and item.childCount() > 0:
+            child = item.child(0)
+            if child is not None:
+                path_str = child.data(0, Qt.ItemDataRole.UserRole)
+                item = child
+
+        if path_str:
+            path = Path(path_str)
+            if path.suffix.lower() == ".md":
+                score = item.data(1, Qt.ItemDataRole.UserRole)
+                dialog = ReportViewerDialog(report_path=path, score=score, parent=self)
+                dialog.exec()
+            else:
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
