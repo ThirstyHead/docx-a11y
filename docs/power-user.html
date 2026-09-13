@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Power User | docx-a11y</title>
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/modules.css">
+</head>
+<body>
+  <header class="l-header">
+    <div class="l-container l-header__nav">
+      <h1 style="margin: 0;">docx-a11y</h1>
+      <nav aria-label="Main Navigation">
+        <ul class="l-header__links">
+          <li><a href="index.html">Home</a></li>
+          <li><a href="install.html">Install</a></li>
+          <li><a href="usage.html">Usage</a></li>
+          <li><a href="power-user.html" aria-current="page">Power User</a></li>
+          <li><a href="about.html">About</a></li>
+          <li><button id="theme-toggle" class="mod-theme-toggle" aria-pressed="false">Toggle Dark Mode</button></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main class="l-container">
+    <section class="l-section">
+      <h2>Power User Guide</h2>
+      <p>For developers, DevOps engineers, and AI researchers.</p>
+      
+      <h3>CLI Reference</h3>
+      <p>The CLI allows you to integrate accessibility auditing into your build pipelines.</p>
+      <div class="mod-code-block">
+        # Scan a single file<br>
+        docx-a11y scan my-doc.docx<br><br>
+        # Scan a directory and output JSON<br>
+        docx-a11y scan ./docs --format json -o report.json
+      </div>
+
+      <h3>CI/CD Integration</h3>
+      <p>Add docx-a11y to your GitHub Actions to prevent inaccessible documents from being merged.</p>
+      <div class="mod-code-block">
+        - name: Accessibility Audit<br>
+        &nbsp;&nbsp;run: |<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;pip install docx-a11y<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;docx-a11y scan ./assets/docs --fail-on-error
+      </div>
+
+      <h3>Agentic AI Workflows</h3>
+      <p>Because docx-a11y provides machine-readable JSON output, it is ideal for LLM-driven remediation. An agent can:</p>
+      <ol>
+        <li>Run the scan via CLI.</li>
+        <li>Parse the JSON report to find the exact location of a failure.</li>
+        <li>Use the Python API to suggest or apply a fix to the .docx structure.</li>
+        <li>Re-scan to verify the fix.</li>
+      </ol>
+    </section>
+  </main>
+
+  <footer class="l-footer l-container">
+    <p>&copy; 2026 docx-a11y. Built on the Japandi A11y Design System.</p>
+  </footer>
+
+  <script src="js/theme.js"></script>
+</body>
+</html>

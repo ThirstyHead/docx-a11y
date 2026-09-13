@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Installation | docx-a11y</title>
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/modules.css">
+</head>
+<body>
+  <header class="l-header">
+    <div class="l-container l-header__nav">
+      <h1 style="margin: 0;">docx-a11y</h1>
+      <nav aria-label="Main Navigation">
+        <ul class="l-header__links">
+          <li><a href="index.html">Home</a></li>
+          <li><a href="install.html" aria-current="page">Install</a></li>
+          <li><a href="usage.html">Usage</a></li>
+          <li><a href="power-user.html">Power User</a></li>
+          <li><a href="about.html">About</a></li>
+          <li><button id="theme-toggle" class="mod-theme-toggle" aria-pressed="false">Toggle Dark Mode</button></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main class="l-container">
+    <section class="l-section">
+      <h2>Installation</h2>
+      <p>Getting started with docx-a11y is simple. Choose the method that works best for you.</p>
+      
+      <div class="l-grid">
+        <div class="mod-card">
+          <h3>macOS</h3>
+          <p>Download the latest <code>.dmg</code> from the releases page and drag to Applications.</p>
+          <div class="mod-alert">
+            <strong>Note:</strong> If you see a "Developer cannot be verified" warning, right-click the app and select "Open".
+          </div>
+        </div>
+        <div class="mod-card">
+          <h3>Windows</h3>
+          <p>Download the <code>.exe</code> installer and follow the setup wizard.</p>
+        </div>
+        <div class="mod-card">
+          <h3>Linux</h3>
+          <p>Install via the AppImage or use the Python package manager.</p>
+        </div>
+      </div>
+
+      <h3 style="margin-top: var(--sys-space-xl);">CLI Installation</h3>
+      <p>For power users and CI/CD pipelines, install the CLI via pip:</p>
+      <div class="mod-code-block">
+        pip install docx-a11y
+      </div>
+    </section>
+  </main>
+
+  <footer class="l-footer l-container">
+    <p>&copy; 2026 docx-a11y. Built on the Japandi A11y Design System.</p>
+  </footer>
+
+  <script src="js/theme.js"></script>
+</body>
+</html>

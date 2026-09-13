@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>docx-a11y | Accessible Word Documents</title>
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/modules.css">
+</head>
+<body>
+  <header class="l-header">
+    <div class="l-container l-header__nav">
+      <h1 style="margin: 0;">docx-a11y</h1>
+      <nav aria-label="Main Navigation">
+        <ul class="l-header__links">
+          <li><a href="index.html" aria-current="page">Home</a></li>
+          <li><a href="install.html">Install</a></li>
+          <li><a href="usage.html">Usage</a></li>
+          <li><a href="power-user.html">Power User</a></li>
+          <li><a href="about.html">About</a></li>
+          <li><button id="theme-toggle" class="mod-theme-toggle" aria-pressed="false">Toggle Dark Mode</button></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main class="l-container">
+    <section class="l-section" style="text-align: center; max-width: 800px; margin: 0 auto;">
+      <h2 style="font-size: var(--sys-font-size-xl);">Make your Word documents accessible to everyone.</h2>
+      <p style="font-size: var(--sys-font-size-lg); color: var(--sys-color-text-muted);">
+        docx-a11y is a powerful, open-source tool that audits .docx files for WCAG compliance, 
+        helping you identify and fix accessibility barriers in seconds.
+      </p>
+      <div style="display: flex; gap: var(--sys-space-md); justify-content: center; margin-top: var(--sys-space-lg);">
+        <a href="install.html" class="mod-button">Get Started</a>
+        <a href="about.html" class="mod-button" style="background-color: transparent; color: var(--sys-color-text-main); border: 1px solid var(--sys-color-text-muted);">Learn More</a>
+      </div>
+    </section>
+
+    <section class="l-section">
+      <h2 style="text-align: center;">Why docx-a11y?</h2>
+      <div class="l-grid">
+        <div class="mod-card">
+          <h3>Fast Auditing</h3>
+          <p>Scan entire folders of documents instantly. No more manual checking of every heading and alt-text field.</p>
+        </div>
+        <div class="mod-card">
+          <h3>Interactive Triage</h3>
+          <p>Our GUI allows you to review issues and mark them as fixed or ignored in a streamlined workflow.</p>
+        </div>
+        <div class="mod-card">
+          <h3>Agentic AI Ready</h3>
+          <p>Built with a CLI and API that allow LLMs to audit and suggest fixes for your documents automatically.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="l-footer l-container">
+    <p>&copy; 2026 docx-a11y. Built on the Japandi A11y Design System.</p>
+  </footer>
+
+  <script src="js/theme.js"></script>
+</body>
+</html>

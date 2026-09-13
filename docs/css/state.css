@@ -1,0 +1,31 @@
+/* 
+ * state.css - SMACSS State Layer
+ * 
+ * State styles are applied to elements to indicate a change in 
+ * their condition (e.g., active, hidden, loading).
+ */
+
+/* Navigation Active State */
+.l-nav-link.is-active {
+  color: var(--sys-color-accent-primary);
+  border-bottom: 2px solid var(--sys-color-accent-primary);
+  font-weight: 600;
+}
+
+/* Theme State - Dark Mode */
+[data-theme=\"dark\"] {
+  --sys-color-bg-primary: #1A1A1A;
+  --sys-color-bg-secondary: #3D3D3D;
+  --sys-color-text-main: #E5E2DA;
+  --sys-color-text-muted: #3D3D3D;
+  --sys-color-text-on-accent: #1A1A1A;
+  --sys-color-accent-primary: #B5A695;
+}
+
+/* 
+ * Educational Note: 
+ * By placing the theme override in the state layer, we keep the 
+ * base.css clean and focused on the default visual identity. 
+ * The [data-theme] attribute is a standard way to handle 
+ * theme switching that is easily accessible to both JS and CSS.
+ */
