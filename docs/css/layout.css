@@ -1,0 +1,66 @@
+/* 
+ * layout.css - SMACSS Layout Layer
+ * 
+ * Focuses on the structural skeleton of the site.
+ * Layout classes are prefixed with .l- to distinguish them from modules.
+ */
+
+.l-container {
+  width: 90%;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 var(--sys-space-md);
+}
+
+.l-header {
+  padding: var(--sys-space-lg) 0;
+  border-bottom: 1px solid var(--sys-color-bg-secondary);
+}
+
+.l-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.l-nav-list {
+  display: flex;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  gap: var(--sys-space-lg);
+}
+
+.l-nav-link {
+  font-weight: 500;
+  font-size: 0.95rem;
+  color: var(--sys-color-text-main);
+}
+
+.l-nav-link.is-active {
+  color: var(--sys-color-accent-primary);
+  border-bottom: 2px solid var(--sys-color-accent-primary);
+}
+
+.l-footer {
+  padding: var(--sys-space-xl) 0 var(--sys-space-lg);
+  margin-top: var(--sys-space-xl);
+  border-top: 1px solid var(--sys-color-bg-secondary);
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--sys-color-text-muted);
+}
+
+.l-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--sys-space-lg);
+  margin: var(--sys-space-lg) 0;
+}
+
+/* 
+ * Educational Note: 
+ * Using CSS Grid with auto-fit and minmax ensures the layout is 
+ * inherently responsive without needing a dozen media queries. 
+ * This reduces CSS bloat and improves performance.
+ */
