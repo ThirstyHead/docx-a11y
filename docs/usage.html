@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Usage | docx-a11y</title>
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/modules.css">
+</head>
+<body>
+  <header class="l-header">
+    <div class="l-container l-header__nav">
+      <h1 style="margin: 0;">docx-a11y</h1>
+      <nav aria-label="Main Navigation">
+        <ul class="l-header__links">
+          <li><a href="index.html">Home</a></li>
+          <li><a href="install.html">Install</a></li>
+          <li><a href="usage.html" aria-current="page">Usage</a></li>
+          <li><a href="power-user.html">Power User</a></li>
+          <li><a href="about.html">About</a></li>
+          <li><button id="theme-toggle" class="mod-theme-toggle" aria-pressed="false">Toggle Dark Mode</button></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main class="l-container">
+    <section class="l-section">
+      <h2>How to use docx-a11y</h2>
+      <p>Whether you are using the GUI or the CLI, the goal is the same: identify accessibility barriers and resolve them.</p>
+      
+      <h3>Your First Audit</h3>
+      <ol>
+        <li><strong>Open the App:</strong> Launch the docx-a11y GUI.</li>
+        <li><strong>Select Folder:</strong> Choose the folder containing your .docx files.</li>
+        <li><strong>Run Scan:</strong> Click "Scan for Issues". The tool will analyze headings, alt-text, table structures, and more.</li>
+        <li><strong>Review Results:</strong> Click on a document to see a detailed list of accessibility failures.</li>
+      </ol>
+
+      <h3>Interactive Triage</h3>
+      <p>Not every "failure" is a bug. Some may be intentional or irrelevant. Use the triage system to:</p>
+      <ul>
+        <li><strong>Fix:</strong> Resolve the issue in Word and mark it as fixed.</li>
+        <li><strong>Ignore:</strong> Mark the issue as a false positive or acceptable risk.</li>
+        <li><strong>Export:</strong> Generate a compliance report for your organization.</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="l-footer l-container">
+    <p>&copy; 2026 docx-a11y. Built on the Japandi A11y Design System.</p>
+  </footer>
+
+  <script src="js/theme.js"></script>
+</body>
+</html>

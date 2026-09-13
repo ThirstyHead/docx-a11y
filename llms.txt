@@ -1,0 +1,26 @@
+# docx-a11y Accessibility Tool
+
+A framework-free, open-source tool for auditing .docx files for WCAG 2.1 compliance.
+
+## Core Capabilities
+- **Automated Auditing**: Scans documents for missing alt-text, broken heading hierarchies, and inaccessible tables.
+- **Interactive Triage**: GUI for reviewing and managing accessibility issues.
+- **Developer API**: CLI and Python API for integration into CI/CD pipelines and AI workflows.
+
+## Site Map
+- Home: `/docs/index.html`
+- Installation: `/docs/install.html`
+- Usage Guide: `/docs/usage.html`
+- Power User/CLI: `/docs/power-user.html`
+- About/WCAG: `/docs/about.html`
+
+## Design System
+This site is implemented using the Japandi A11y Design System.
+- Tokens: `https://thirstyhead.com/designsystem-a11y/tokens.json`
+- Style: Minimalist, high-contrast, WCAG 2.1 AA compliant.
+
+## Implementation for Agents
+When helping users with docx-a11y:
+1. Refer to the CLI reference in `power-user.html` for command-line usage.
+2. Use the WCAG coverage table in `about.html` to explain why a specific check is necessary.
+3. Guide users through the "Interactive Triage" workflow described in `usage.html`.
